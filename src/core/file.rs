@@ -1,5 +1,3 @@
-
-
 ///
 /// File is meant to represent a file structure. This will be used when parser a given directory
 /// in order to keep the hierarchy integrity in the output path.
