@@ -7,14 +7,10 @@ use std::fs;
 /// them to the result keeping the hierarchy integrity.
 ///
 pub fn parse_dir(dir_path: String) -> Result<file::File,  Error> {
-    let dir =  fs::read_dir(dir_path);
-    match dir {
-        Ok(_) => {},
-        Err(e) => return Err(e)
-    }
-
+    let dir =  fs::read_dir(dir_path)?;
     let mut file_system = file::File::init(None, Some(true), Some(vec![]));
-    for entry in dir? {
+    
+    for entry in dir {
         let entry = entry?;
         let entry_path = entry.path();
 

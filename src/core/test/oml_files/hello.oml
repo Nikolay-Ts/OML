@@ -1,0 +1,5 @@
+class Hello {
+    const int64 meow;
+    string hello;
+    bool isTrue;
+}
