@@ -1,9 +1,12 @@
 use std::cmp::PartialEq;
 use std::fmt;
+use std::fmt::format;
 use std::fs;
 use std::io::{BufReader, Error, Read};
 use std::path::Path;
 use regex::Regex;
+
+use crate::core::errors;
 
 #[derive(Debug, PartialEq)]
 enum ObjectType {
@@ -46,6 +49,14 @@ impl OmlObject {
     const ENUM_NAME: &'static str = "enum";
     const STRUCT_NAME: &'static str = "struct";
 
+    fn new() -> Self {
+        Self {
+            oml_type: ObjectType::UNDECIDED,
+            name: String::from(""),
+            variables: vec![]
+        }
+    }
+
     pub fn get_from_file(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let path = Path::new(file_path);
         let content = fs::read_to_string(path)?;
@@ -75,9 +86,11 @@ impl OmlObject {
                     }
                     Self::ENUM_NAME => {
                         self.oml_type = ObjectType::ENUM;
+                        self.assign_obj_name(text[1])?;
                     }
                     Self::STRUCT_NAME => {
                         self.oml_type = ObjectType::STRUCT;
+                        self.assign_obj_name(text[1])?;
                     }
                     _ => {},
                 }
@@ -88,10 +101,13 @@ impl OmlObject {
     }
 
     // todo implement the custom errors
-    fn assign_obj_name(&mut self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn assign_obj_name(&mut self, name: &str) -> Result<(), errors::NameError> {
         match Self::is_valid_name(name) {
             true => self.name = name.to_string(),
-            false => {  }
+            false => {
+                let message = format!("{} is not a valid obj name.", name);
+                return Err(errors::NameError::new(message));
+            }
         }
 
         Ok(())
@@ -112,37 +128,54 @@ impl OmlObject {
 mod test {
     use super::*;
 
+    const VALID_NAMES: [&str; 8] = [
+        "myfile.txt",
+        "variable_name",
+        "Config",
+        "test123",
+        "my-file-name",
+        "file.tar.gz",
+        "a",
+        "MyClass"
+    ];
+
+    const INVALID_NAMES: [&str; 8] = [
+        "123file",
+        "_private",
+        "-file",
+        "my file",
+        "file@name",
+        "my$var",
+        "file/path",
+        "",
+    ];
+
     #[test]
     fn test_name_validity() {
-        let valid_names = vec![
-            "myfile.txt",
-            "variable_name",
-            "Config",
-            "test123",
-            "my-file-name",
-            "file.tar.gz",
-            "a",
-            "MyClass"
-        ];
-
-        let invalid_names = vec![
-            "123file",
-            "_private",
-            "-file",
-            "my file",
-            "file@name",
-            "my$var",
-            "file/path",
-            "",
-        ];
-
-        for valid_name in valid_names {
+        for valid_name in VALID_NAMES {
             assert_eq!(OmlObject::is_valid_name(valid_name), true);
         }
 
-        for valid_name in invalid_names {
+        for valid_name in INVALID_NAMES {
             assert_eq!(OmlObject::is_valid_name(valid_name), false);
         }
+    }
+
+    #[test]
+    fn test_assign_name() {
+        let mut oml_obj = OmlObject::new();
+
+        for valid_name in VALID_NAMES {
+            oml_obj.assign_obj_name(valid_name).expect("this should not happen");
+            assert_eq!(oml_obj.name, valid_name);
+        }
+
+        for invalid_name in INVALID_NAMES {
+            let error =   oml_obj.assign_obj_name(invalid_name).unwrap_err();
+            let message = format!("{} is not a valid obj name.", invalid_name);
+            assert_eq!(error.message, message);
+        }
+
     }
 
 }
