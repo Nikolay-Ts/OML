@@ -1,12 +1,15 @@
 use std::cmp::PartialEq;
+use std::fmt;
 use std::fs;
 use std::io::{BufReader, Error, Read};
 use std::path::Path;
+use regex::Regex;
 
 #[derive(Debug, PartialEq)]
 enum ObjectType {
     ENUM,
     CLASS,
+    STRUCT,
     UNDECIDED
 }
 #[derive(Debug)]
@@ -41,8 +44,9 @@ pub struct OmlObject {
 impl OmlObject {
     const CLASS_NAME: &'static str = "class";
     const ENUM_NAME: &'static str = "enum";
+    const STRUCT_NAME: &'static str = "struct";
 
-    pub fn get_from_file(file_path: &str) -> Result<Self, Error> {
+    pub fn get_from_file(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let path = Path::new(file_path);
         let content = fs::read_to_string(path)?;
 
@@ -52,17 +56,13 @@ impl OmlObject {
             variables: vec![]
         };
 
-
         // oml_object.scan_file(file_path)?;
         oml_object.scan_file(content)?;
-
-
-
 
         Ok(oml_object)
     }
 
-    fn scan_file(&mut self, content: String) -> Result<(), Error> {
+    fn scan_file(&mut self, content: String) -> Result<(), Box<dyn std::error::Error>> {
         let lines = content.split(|c| c == ';' || c == '\n').collect::<Vec<_>>();
         for line in lines {
             let text = line.split(' ').collect::<Vec<_>>();
@@ -71,13 +71,13 @@ impl OmlObject {
                 match text[0] {
                     Self::CLASS_NAME => {
                         self.oml_type = ObjectType::CLASS;
-                        self.name = text[1].to_string();
-                        continue;
+                        self.assign_obj_name(text[1])?;
                     }
                     Self::ENUM_NAME => {
                         self.oml_type = ObjectType::ENUM;
-                        self.name = text[1].to_string();
-                        continue;
+                    }
+                    Self::STRUCT_NAME => {
+                        self.oml_type = ObjectType::STRUCT;
                     }
                     _ => {},
                 }
@@ -87,13 +87,62 @@ impl OmlObject {
         Ok(())
     }
 
+    // todo implement the custom errors
+    fn assign_obj_name(&mut self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        match Self::is_valid_name(name) {
+            true => self.name = name.to_string(),
+            false => {  }
+        }
+
+        Ok(())
+    }
+
     /// A name is correct if it begins with a letter (case-insensitive)
     /// and does not contain the following list of forbidden characters [/ \ | < > : " ? *].
     /// This is to ensure that the names can be translated to valid file, class/enum and variable
     /// names in other programing languages.
+    #[inline]
     fn is_valid_name(name: &str) -> bool {
-        todo!(a reg exp to filer this and figure out how to have a coressponding error message);
-        
-        true 
+        let re = Regex::new(r"^[a-zA-Z][a-zA-Z0-9_.-]*$").unwrap();
+        re.is_match(name)
     }
+}
+
+
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_name_validity() {
+        let valid_names = vec![
+            "myfile.txt",
+            "variable_name",
+            "Config",
+            "test123",
+            "my-file-name",
+            "file.tar.gz",
+            "a",
+            "MyClass"
+        ];
+
+        let invalid_names = vec![
+            "123file",
+            "_private",
+            "-file",
+            "my file",
+            "file@name",
+            "my$var",
+            "file/path",
+            "",
+        ];
+
+        for valid_name in valid_names {
+            assert_eq!(OmlObject::is_valid_name(valid_name), true);
+        }
+
+        for valid_name in invalid_names {
+            assert_eq!(OmlObject::is_valid_name(valid_name), false);
+        }
+    }
+
 }
