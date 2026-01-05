@@ -1,5 +1,5 @@
 use std::fmt;
-
+use crate::define_error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NameError {
@@ -22,3 +22,5 @@ impl fmt::Display for NameError {
 
 // AND THIS:
 impl std::error::Error for NameError {}
+
+define_error!(ConstError, "Modifier Error: ");

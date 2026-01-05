@@ -1,40 +1,39 @@
 use std::cmp::PartialEq;
-use std::fmt;
-use std::fmt::format;
 use std::fs;
-use std::io::{BufReader, Error, Read};
 use std::path::Path;
 use regex::Regex;
 
 use crate::core::errors;
 
 #[derive(Debug, PartialEq)]
-enum ObjectType {
+pub enum ObjectType {
     ENUM,
     CLASS,
     STRUCT,
     UNDECIDED
 }
-#[derive(Debug)]
-enum VariableModifier {
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VariableModifier {
     CONST,
     MUT,
     STATIC,
     OPTIONAL,
 }
 
-#[derive(Debug)]
-enum VariableVisibility {
+#[derive(Debug, Clone, PartialEq)]
+pub enum VariableVisibility {
     PRIVATE,
     PUBLIC,
     PROTECTED
 }
 
 #[derive(Debug)]
-struct Variable {
+pub struct Variable {
     pub var_mod: Vec<VariableModifier>,
     pub visibility: VariableVisibility,
-    pub var_type: String
+    pub var_type: String,
+    pub name: String,
 }
 
 #[derive(Debug)]
@@ -67,40 +66,84 @@ impl OmlObject {
             variables: vec![]
         };
 
-        // oml_object.scan_file(file_path)?;
         oml_object.scan_file(content)?;
 
         Ok(oml_object)
     }
 
     fn scan_file(&mut self, content: String) -> Result<(), Box<dyn std::error::Error>> {
-        let lines = content.split(|c| c == ';' || c == '\n').collect::<Vec<_>>();
-        for line in lines {
-            let text = line.split(' ').collect::<Vec<_>>();
+        let content = Self::remove_comments(&content);
+        let lines: Vec<&str> = content.lines().collect();
+        let mut inside_body = false;
+        let mut body_lines: Vec<String> = Vec::new();
 
-            if self.oml_type == ObjectType::UNDECIDED {
-                match text[0] {
+        for line in lines {
+            let trimmed = line.trim();
+
+            if !inside_body {
+                let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+                if tokens.is_empty() {
+                    continue;
+                }
+
+                match tokens[0] {
                     Self::CLASS_NAME => {
                         self.oml_type = ObjectType::CLASS;
-                        self.assign_obj_name(text[1])?;
+                        if tokens.len() > 1 {
+                            self.assign_obj_name(tokens[1])?;
+                        }
                     }
                     Self::ENUM_NAME => {
                         self.oml_type = ObjectType::ENUM;
-                        self.assign_obj_name(text[1])?;
+                        if tokens.len() > 1 {
+                            self.assign_obj_name(tokens[1])?;
+                        }
                     }
                     Self::STRUCT_NAME => {
                         self.oml_type = ObjectType::STRUCT;
-                        self.assign_obj_name(text[1])?;
+                        if tokens.len() > 1 {
+                            self.assign_obj_name(tokens[1])?;
+                        }
                     }
-                    _ => {},
+                    _ => {}
                 }
+
+                if trimmed.contains('{') {
+                    inside_body = true;
+                }
+                continue;
             }
+
+            if trimmed.contains('}') {
+                break;
+            }
+
+            if !trimmed.is_empty() {
+                body_lines.push(trimmed.to_string());
+            }
+        }
+
+        if !body_lines.is_empty() {
+            self.variables = Self::extract_object_variables(body_lines)?;
         }
 
         Ok(())
     }
 
-    // todo implement the custom errors
+    // todo: add multi line commenting /* */
+    fn remove_comments(content: &str) -> String {
+        content.lines()
+            .map(|line| {
+                if let Some(pos) = line.find("//") {
+                    &line[..pos]
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn assign_obj_name(&mut self, name: &str) -> Result<(), errors::NameError> {
         match Self::is_valid_name(name) {
             true => self.name = name.to_string(),
@@ -113,10 +156,128 @@ impl OmlObject {
         Ok(())
     }
 
-    /// A name is correct if it begins with a letter (case-insensitive)
-    /// and does not contain the following list of forbidden characters [/ \ | < > : " ? *].
-    /// This is to ensure that the names can be translated to valid file, class/enum and variable
-    /// names in other programing languages.
+    #[inline]
+    fn parse_visibility(token: &str) -> Option<VariableVisibility> {
+        match token {
+            "private" => Some(VariableVisibility::PRIVATE),
+            "public" => Some(VariableVisibility::PUBLIC),
+            "protected" => Some(VariableVisibility::PROTECTED),
+            _ => None
+        }
+    }
+
+    #[inline]
+    fn parse_modifier(token: &str) -> Option<VariableModifier> {
+        match token {
+            "const" => Some(VariableModifier::CONST),
+            "mut" => Some(VariableModifier::MUT),
+            "static" => Some(VariableModifier::STATIC),
+            "optional" => Some(VariableModifier::OPTIONAL),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn is_type(token: &str) -> bool {
+        matches!(token,
+            "int8" | "int16" | "int32" | "int64" |
+            "uint8" | "uint16" | "uint32" | "uint64" |
+            "float" | "double" | "bool" | "string" | "char"
+        ) || Self::is_valid_name(token)
+    }
+
+    fn extract_object_variables(lines: Vec<String>) -> Result<Vec<Variable>, Box<dyn std::error::Error>> {
+        let mut vars: Vec<Variable> = Vec::new();
+
+        for line in lines {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let cleaned = trimmed.trim_end_matches(|c| c == ';' || c == '\n').trim();
+
+            match Self::parse_variable_declaration(cleaned) {
+                Ok(var) => vars.push(var),
+                Err(e) => {
+                    return Err(format!("Error parsing line '{}': {}", line, e).into());
+                }
+            }
+        }
+
+        Ok(vars)
+    }
+
+    fn parse_variable_declaration(line: &str) -> Result<Variable, String> {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+
+        if tokens.is_empty() {
+            return Err("Empty line".to_string());
+        }
+
+        let mut visibility: Option<VariableVisibility> = None;
+        let mut modifiers: Vec<VariableModifier> = Vec::new();
+        let mut var_type: Option<String> = None;
+        let mut var_name: Option<String> = None;
+        let mut type_seen = false;
+
+        for token in tokens {
+            if let Some(vis) = Self::parse_visibility(token) {
+                if type_seen {
+                    return Err(format!(
+                        "Visibility modifier '{}' cannot appear after type",
+                        token
+                    ));
+                }
+
+                if visibility.is_some() {
+                    return Err("Multiple visibility modifiers found".to_string());
+                }
+                visibility = Some(vis);
+                continue;
+            }
+
+            if let Some(modifier) = Self::parse_modifier(token) {
+                if type_seen {
+                    return Err(format!(
+                        "Modifier '{}' cannot appear after type",
+                        token
+                    ));
+                }
+                modifiers.push(modifier);
+                continue;
+            }
+
+            if Self::is_type(token) && var_type.is_none() {
+                var_type = Some(token.to_string());
+                type_seen = true;
+                continue;
+            }
+
+            if var_type.is_some() && var_name.is_none() {
+                var_name = Some(token.to_string());
+                break;
+            }
+
+            return Err(format!("Unexpected token: {}", token));
+        }
+
+        let final_type = var_type.ok_or("No type specified")?;
+        let final_name = var_name.ok_or("No variable name specified")?;
+        let final_visibility = visibility.unwrap_or(VariableVisibility::PRIVATE);
+
+        if modifiers.contains(&VariableModifier::CONST) && modifiers.contains(&VariableModifier::MUT) {
+            return Err(format!("Const Error: variable {} cannot be const and mut simultaneously!", final_name));
+        }
+
+        Ok(Variable {
+            var_mod: modifiers,
+            visibility: final_visibility,
+            var_type: final_type,
+            name: final_name,
+        })
+    }
+
     #[inline]
     fn is_valid_name(name: &str) -> bool {
         let re = Regex::new(r"^[a-zA-Z][a-zA-Z0-9_.-]*$").unwrap();
@@ -125,6 +286,7 @@ impl OmlObject {
 }
 
 
+#[cfg(test)]
 mod test {
     use super::*;
 
@@ -171,11 +333,116 @@ mod test {
         }
 
         for invalid_name in INVALID_NAMES {
-            let error =   oml_obj.assign_obj_name(invalid_name).unwrap_err();
+            let error = oml_obj.assign_obj_name(invalid_name).unwrap_err();
             let message = format!("{} is not a valid obj name.", invalid_name);
             assert_eq!(error.message, message);
         }
-
     }
 
+    #[test]
+    fn test_parse_variable_declaration() {
+        // Valid declarations
+        let valid_cases = vec![
+            ("public const int64 myVar", "myVar", "int64", 1, VariableVisibility::PUBLIC),
+            ("private mut string name", "name", "string", 1, VariableVisibility::PRIVATE),
+            ("protected static int32 count", "count", "int32", 1, VariableVisibility::PROTECTED),
+            ("int64 simpleVar", "simpleVar", "int64", 0, VariableVisibility::PRIVATE),
+            ("const int64 meow", "meow", "int64", 1, VariableVisibility::PRIVATE),
+            ("string hello", "hello", "string", 0, VariableVisibility::PRIVATE),
+            ("bool isTrue", "isTrue", "bool", 0, VariableVisibility::PRIVATE),
+        ];
+
+        for (input, expected_name, expected_type, expected_mod_count, _expected_vis) in valid_cases {
+            let result = OmlObject::parse_variable_declaration(input);
+            assert!(result.is_ok(), "Failed to parse: {}", input);
+            let var = result.unwrap();
+            assert_eq!(var.name, expected_name);
+            assert_eq!(var.var_type, expected_type);
+            assert_eq!(var.var_mod.len(), expected_mod_count);
+            assert!(matches!(var.visibility, _expected_vis));
+        }
+        let invalid_cases = vec![
+            "int64 private myVar",
+            "int32 public x",
+            "string private name",
+            "int64 const x",
+        ];
+
+        for input in invalid_cases {
+            let result = OmlObject::parse_variable_declaration(input);
+            assert!(result.is_err(), "Should have failed: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_parse_class_from_string() {
+        let content = r#"
+            class Hello {
+                const int64 meow;
+                string hello;
+                bool isTrue;
+            }
+        "#;
+
+        let mut oml_obj = OmlObject::new();
+        let result = oml_obj.scan_file(content.to_string());
+
+        assert!(result.is_ok());
+        assert_eq!(oml_obj.name, "Hello");
+        assert!(matches!(oml_obj.oml_type, ObjectType::CLASS));
+        assert_eq!(oml_obj.variables.len(), 3);
+
+        // check first variable
+        assert_eq!(oml_obj.variables[0].name, "meow");
+        assert_eq!(oml_obj.variables[0].var_type, "int64");
+        assert_eq!(oml_obj.variables[0].var_mod.len(), 1);
+        assert!(matches!(oml_obj.variables[0].var_mod[0], VariableModifier::CONST));
+
+        // check second variable
+        assert_eq!(oml_obj.variables[1].name, "hello");
+        assert_eq!(oml_obj.variables[1].var_type, "string");
+        assert_eq!(oml_obj.variables[1].var_mod.len(), 0);
+
+        // check third variable
+        assert_eq!(oml_obj.variables[2].name, "isTrue");
+        assert_eq!(oml_obj.variables[2].var_type, "bool");
+    }
+
+    #[test]
+    fn test_modifier_ordering_rule() {
+        let content = r#"
+            class Test {
+                int64 private x;
+            }
+        "#;
+
+        let mut oml_obj = OmlObject::new();
+        let result = oml_obj.scan_file(content.to_string());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wrong_const() {
+        let content = r#"
+            class Test {
+                const mut int64 x;
+            }
+        "#;
+
+        let content_swaped = r#"
+            class Test {
+                const mut int64 x;
+            }
+        "#;
+
+        let mut oml_obj = OmlObject::new();
+        let result = oml_obj.scan_file(content.to_string());
+
+        assert!(result.is_err());
+
+        let result = oml_obj.scan_file(content_swaped.to_string());
+
+        assert!(result.is_err());
+    }
 }
