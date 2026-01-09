@@ -72,13 +72,51 @@ impl OmlObject {
     }
 
     fn scan_file(&mut self, content: String) -> Result<(), Box<dyn std::error::Error>> {
-        let content = Self::remove_comments(&content);
         let lines: Vec<&str> = content.lines().collect();
         let mut inside_body = false;
+        let mut commenting = false;
         let mut body_lines: Vec<String> = Vec::new();
 
         for line in lines {
             let trimmed = line.trim();
+            let processed_line: String;
+            let mut line_ref: &str = trimmed;
+
+            if commenting {
+                if let Some(pos) = line_ref.find("*/") {
+                    commenting = false;
+                    line_ref = line_ref[pos + 2..].trim_start();
+                    if line_ref.is_empty() {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            }
+
+            if let Some(pos) = line_ref.find("//") {
+                line_ref = line_ref[..pos].trim_end();
+                if line_ref.is_empty() {
+                    continue;
+                }
+            }
+
+            if let Some(pos) = line_ref.find("/*") {
+                let before_comment = line_ref[..pos].trim_end();
+
+                if let Some(end_pos) = line_ref[pos..].find("*/") {
+                    let after_comment = line_ref[pos + end_pos + 2..].trim_start();
+                    processed_line = format!("{} {}", before_comment, after_comment);
+                    line_ref = processed_line.trim();
+                } else {
+                    commenting = true;
+                    line_ref = before_comment;
+                }
+
+                if line_ref.is_empty() {
+                    continue;
+                }
+            }
 
             if !inside_body {
                 let tokens: Vec<&str> = trimmed.split_whitespace().collect();
@@ -128,20 +166,6 @@ impl OmlObject {
         }
 
         Ok(())
-    }
-
-    // todo: add multi line commenting /* */
-    fn remove_comments(content: &str) -> String {
-        content.lines()
-            .map(|line| {
-                if let Some(pos) = line.find("//") {
-                    &line[..pos]
-                } else {
-                    line
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     fn assign_obj_name(&mut self, name: &str) -> Result<(), errors::NameError> {
@@ -444,5 +468,25 @@ mod test {
         let result = oml_obj.scan_file(content_swaped.to_string());
 
         assert!(result.is_err());
+    }
+
+    #[cfg(test)]
+    mod comment_tests {
+        use super::*;
+
+        #[test]
+        fn test_single_comments() {
+            let content = r#"
+               // ignore me
+               class Test {
+                const int64 x;
+               }
+            "#;
+
+            let mut oml_obj = OmlObject::new();
+            let result = oml_obj.scan_file(content.to_string());
+
+            assert!(result.is_ok());
+        }
     }
 }
