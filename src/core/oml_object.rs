@@ -28,12 +28,24 @@ pub enum VariableVisibility {
     PROTECTED
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Variable {
     pub var_mod: Vec<VariableModifier>,
     pub visibility: VariableVisibility,
     pub var_type: String,
     pub name: String,
+}
+
+/// for testing purposes only
+impl Variable {
+    fn new(var_mod: Vec<VariableModifier>,visibility: VariableVisibility, var_type: String, name: String) -> Self {
+        Variable {
+            var_mod,
+            visibility,
+            var_type,
+            name
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -79,7 +91,7 @@ impl OmlObject {
 
         for line in lines {
             let trimmed = line.trim();
-            let processed_line: String;
+            let mut processed_line = String::new();
             let mut line_ref: &str = trimmed;
 
             if commenting {
@@ -119,7 +131,7 @@ impl OmlObject {
             }
 
             if !inside_body {
-                let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+                let tokens: Vec<&str> = line_ref.split_whitespace().collect();
                 if tokens.is_empty() {
                     continue;
                 }
@@ -146,18 +158,18 @@ impl OmlObject {
                     _ => {}
                 }
 
-                if trimmed.contains('{') {
+                if line_ref.contains('{') {
                     inside_body = true;
                 }
                 continue;
             }
 
-            if trimmed.contains('}') {
+            if line_ref.contains('}') {
                 break;
             }
 
-            if !trimmed.is_empty() {
-                body_lines.push(trimmed.to_string());
+            if !line_ref.is_empty() {
+                body_lines.push(line_ref.to_string());
             }
         }
 
@@ -480,13 +492,43 @@ mod test {
                // ignore me
                class Test {
                 const int64 x;
+                const int64 y; // this is good
+                // const int64 z;
                }
             "#;
 
+            let content2 = r#"
+                // ignore me
+                //class Test {
+                // const int64 x;
+                //const int64 y; // this is good
+                //  const int64 z;
+               //}
+            "#;
+
+
+            let vars = vec![
+                Variable::new(vec![VariableModifier::CONST], VariableVisibility::PRIVATE,  String::from("int64"), String::from("x")),
+                Variable::new(vec![VariableModifier::CONST], VariableVisibility::PRIVATE,  String::from("int64"), String::from("y"))
+
+            ];
+
             let mut oml_obj = OmlObject::new();
-            let result = oml_obj.scan_file(content.to_string());
+            let mut result = oml_obj.scan_file(content.to_string());
 
             assert!(result.is_ok());
+            assert_eq!(oml_obj.variables, vars);
+
+            let mut oml_obj2 = OmlObject::new();
+            result = oml_obj2.scan_file(content2.to_string());
+
+            assert!(result.is_ok());
+            assert_eq!(oml_obj2.variables, vec![]);
+        }
+
+        #[test]
+        fn test_multi_lined_comments() {
+            todo!("implement multi lined comments")
         }
     }
 }
