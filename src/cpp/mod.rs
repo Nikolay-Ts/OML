@@ -1,1 +1,2 @@
-mod oml_cpp;
+pub mod oml_cpp;
+mod test;

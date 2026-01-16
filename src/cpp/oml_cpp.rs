@@ -1,5 +1,9 @@
-use crate::core::oml_object::{OmlObject, ObjectType};
+use crate::core::oml_object::{
+    OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
+};
 use std::fmt::Write;
+use std::ptr::write;
+
 pub fn oml_to_cpp(oml_object: &OmlObject, file_name: &String) -> Result<String, std::fmt::Error> {
     let mut cpp_file = String::from("");
     let header_guard = format!("{}_H", file_name.to_uppercase());
@@ -9,11 +13,12 @@ pub fn oml_to_cpp(oml_object: &OmlObject, file_name: &String) -> Result<String, 
     writeln!(cpp_file, "#define {}", header_guard)?;
     writeln!(cpp_file, "#\ninclude <cstdint>")?;
     writeln!(cpp_file, "#\ninclude <string>")?;
+    writeln!(cpp_file, "#\ninclude <optional>")?;
+
 
     match &oml_object.oml_type {
         ObjectType::ENUM => generate_enum(oml_object, &mut cpp_file)?,
-        ObjectType::CLASS => generate_enum(oml_object, &mut cpp_file)?,
-        ObjectType::STRUCT => generate_enum(oml_object, &mut cpp_file)?,
+        ObjectType::CLASS | ObjectType::STRUCT  => generate_class_or_struct(oml_object, &mut cpp_file)?,
         ObjectType::UNDECIDED => return Err(std::fmt::Error),
     }
 
@@ -21,6 +26,97 @@ pub fn oml_to_cpp(oml_object: &OmlObject, file_name: &String) -> Result<String, 
     writeln!(cpp_file, "#endif // {}", header_guard)?;
     
     Ok(cpp_file)
+}
+
+
+
+fn generate_enum(oml_object: &OmlObject, cpp_file: &mut String) -> Result<(), std::fmt::Error> {
+    writeln!(cpp_file, "enum class {} {{", oml_object.name)?;
+    let length = oml_object.variables.len();
+
+    for (index, var) in oml_object.variables.iter().enumerate() {
+        write!(cpp_file, "\t{}", var.name.to_uppercase())?;
+        if index == length-1 {
+            writeln!(cpp_file, "")?;
+            continue
+        }
+        writeln!(cpp_file, ",")?;
+
+    }
+
+    writeln!(cpp_file, "}}")?;
+
+    Ok(())
+}
+
+fn generate_class_or_struct(
+    oml_object: &OmlObject,
+    cpp_file: &mut String
+) -> Result<(), std::fmt::Error> {
+    let oml_type = match &oml_object.oml_type {
+        ObjectType::CLASS => "class",
+        ObjectType::STRUCT => "struct",
+        _ => return Err(std::fmt::Error)
+    };
+
+    writeln!(cpp_file, "{} {} {{", oml_type, oml_object.name)?;
+
+    generate_variables(&oml_object.variables, cpp_file)?;
+    
+
+    writeln!(cpp_file, "}}")?;
+
+    Ok(())
+}
+
+fn generate_variables(
+    variables: &Vec<Variable>,
+    cpp_file: &mut String
+) -> Result<(), std::fmt::Error> {
+    let private_vars = variables
+        .iter()
+        .filter(|v| v.visibility == VariableVisibility::PRIVATE)
+        .collect::<Vec<_>>();
+
+    let protected_vars  = variables
+        .iter()
+        .filter(|v| v.visibility == VariableVisibility::PROTECTED)
+        .collect::<Vec<_>>();
+
+    let public_vars  = variables
+        .iter()
+        .filter(|v| v.visibility == VariableVisibility::PUBLIC)
+        .collect::<Vec<_>>();
+
+    let mut output = String::from("");
+
+    if private_vars.len() > 0 {
+        writeln!(output, "private:")?;
+    }
+
+    for var in private_vars {
+        convert_modifiers_and_type(var, cpp_file)?;
+        write!(cpp_file, "{}\n", var.name)?;
+    }
+
+    writeln!(cpp_file, "")?;
+
+
+    for var in protected_vars {
+        convert_modifiers_and_type(var, cpp_file)?;
+        write!(cpp_file, "{}\n", var.name)?;
+    }
+
+    writeln!(cpp_file, "")?;
+
+    for var in public_vars {
+        convert_modifiers_and_type(var, cpp_file)?;
+        write!(cpp_file, "{}\n", var.name)?;
+    }
+
+    writeln!(cpp_file, "")?;
+
+    Ok(())
 }
 
 #[inline]
@@ -43,23 +139,30 @@ fn convert_type(var_type: &str) -> String {
     }.to_string()
 }
 
-fn generate_enum(oml_object: &OmlObject, cpp_file: &mut String) -> Result<(), std::fmt::Error>{
-    writeln!(cpp_file, "enum class {} {{", oml_object.name)?;
-    let length = oml_object.variables.len();
-
-    for (index, var) in oml_object.variables.iter().enumerate() {
-        write!(cpp_file, "\t{}", var.name.to_uppercase())?;
-        if index == length-1 {
-            continue
-        }
-        writeln!(cpp_file, ",")?;
-
+#[inline]
+fn convert_modifiers_and_type(
+    var: &Variable,
+    cpp_file: &mut String
+) -> Result<(), std::fmt::Error> {
+    if var.var_mod.contains(&VariableModifier::STATIC) {
+        write!(cpp_file, "static ")?;
     }
 
-    writeln!(cpp_file, "}}")?;
+    if var.var_mod.contains(&VariableModifier::CONST)
+        && !var.var_mod.contains(&VariableModifier::MUT) {
+        write!(cpp_file, "const ")?;
+    }
+
+    let var_type = convert_type(var.var_type.as_str());
+    if var.var_mod.contains(&VariableModifier::OPTIONAL) {
+        write!(cpp_file, "std::optional<{}>", var_type)?;
+    } else {
+        write!(cpp_file, "{}", var_type)?;
+    }
 
     Ok(())
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -342,5 +445,31 @@ mod tests {
 
         let newline_count = output.matches('\n').count();
         assert!(newline_count >= 3);
+    }
+
+    #[test]
+    fn meow() {
+        let oml_object = OmlObject {
+            oml_type: ObjectType::ENUM,
+            name: "Test".to_string(),
+            variables: vec![
+                Variable {
+                    var_mod: vec![],
+                    visibility: VariableVisibility::PUBLIC,
+                    var_type: "".to_string(),
+                    name: "A".to_string(),
+                },
+                Variable {
+                    var_mod: vec![],
+                    visibility: VariableVisibility::PUBLIC,
+                    var_type: "".to_string(),
+                    name: "B".to_string(),
+                },
+            ],
+        };
+
+        let mut output = String::new();
+        generate_enum(&oml_object, &mut output).unwrap();
+        println!("{}", output);
     }
 }
