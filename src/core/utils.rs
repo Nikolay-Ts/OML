@@ -1,5 +1,3 @@
-use std::fmt;
-
 #[macro_export]
 macro_rules! define_error {
     ($error_name:ident, $prefix:expr) => {
