@@ -4,11 +4,21 @@ mod cli;
 
 use clap::Parser;
 use cli::oml::OmlCli;
-use core::file::File;
 
 fn main() {
     let cli = OmlCli::parse();
-    let _ = File::init(None, None, None);
+
+    let files = match cli.get_files() {
+        Ok(files) => files,
+        Err(e) =>  {
+         eprintln!("An error was encountered when parsing the input files: {:?}", e);
+            return
+        }
+    };
+
+    for file in files {
+        println!("file has name {}", file.name);
+    }
 
     println!("Hello, world!");
 }

@@ -1,4 +1,7 @@
 use clap::Parser;
+use crate::core::errors;
+use crate::core::dir_parser::parse_dir_from_string;
+use crate::core::file;
 
 #[derive(Parser)]
 #[command(name = "oml")]
@@ -15,8 +18,8 @@ pub struct OmlCli {
     #[arg(short, long)]
     recursive: bool,
 
-    #[arg(short, long, default_value_t = 3u8)]
-    depth: u8,
+    #[arg(short, long, default_value_t = 3)]
+    depth: usize,
 
     // language conversions
 
@@ -37,4 +40,22 @@ pub struct OmlCli {
 
     #[arg(long)]
     typescript: bool,
+}
+
+impl OmlCli {
+    pub fn get_files(self) -> Result<Vec<file::File>, errors::ParseError> {
+        if self.inputs.is_none() {
+            return Err(errors::ParseError::InvalidPath);
+        }
+
+        let input_files = self.inputs.unwrap();
+        let mut files = Vec::with_capacity(input_files.len());
+
+        for file_name in input_files {
+            let file = parse_dir_from_string(file_name.clone(), self.depth)?;
+            files.push(file);
+        }
+
+        Ok(files)
+    }
 }
