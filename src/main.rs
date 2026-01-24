@@ -11,8 +11,8 @@ fn main() {
     let files = match cli.get_files() {
         Ok(files) => files,
         Err(e) =>  {
-         eprintln!("An error was encountered when parsing the input files: {:?}", e);
-            return
+            eprintln!("An error was encountered when parsing the input files: {:?}", e);
+            return;
         }
     };
 
@@ -20,5 +20,4 @@ fn main() {
         println!("file has name {}", file.name);
     }
 
-    println!("Hello, world!");
 }

@@ -45,6 +45,7 @@ pub struct OmlCli {
 impl OmlCli {
     pub fn get_files(self) -> Result<Vec<file::File>, errors::ParseError> {
         if self.inputs.is_none() {
+            eprintln!("no arguments were given");
             return Err(errors::ParseError::InvalidPath);
         }
 

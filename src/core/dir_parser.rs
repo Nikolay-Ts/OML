@@ -3,16 +3,46 @@ use std::path::Path;
 use crate::core::errors::ParseError;
 use crate::core::file;
 
-
-pub fn parse_dir_improved(
-    dir_path: &Path,
+pub fn parse_path(
+    path: &Path,
     max_depth: usize
 ) -> Result<file::File, ParseError> {
     if max_depth == 0 {
         return Err(ParseError::MaxDepthExceeded);
     }
 
-    let dir = fs::read_dir(dir_path)?;
+    let metadata = fs::symlink_metadata(path)?;
+
+    if metadata.file_type().is_symlink() {
+        return Err(ParseError::InvalidPath);
+    }
+
+    if path.is_file() {
+        if let Some(extension) = path.extension() {
+            if extension.to_string_lossy() != "oml" {
+                return Err(ParseError::InvalidPath);
+            }
+        } else {
+            return Err(ParseError::InvalidPath);
+        }
+
+        let file_name = path.file_name()
+            .ok_or(ParseError::InvalidPath)?
+            .to_string_lossy()
+            .to_string();
+
+        return Ok(file::File::init(
+            Some(file_name),
+            None,
+            None
+        ));
+    }
+
+    if !path.is_dir() {
+        return Err(ParseError::InvalidPath);
+    }
+
+    let dir = fs::read_dir(path)?;
     let mut file_system = file::File::init(None, Some(true), Some(vec![]));
 
     for entry in dir {
@@ -28,6 +58,7 @@ pub fn parse_dir_improved(
         if entry_path.is_file() {
             if let Some(extension) = entry_path.extension() {
                 if extension.to_string_lossy() != "oml" {
+                    eprintln!("Warning: Skipping non-oml file: {}", entry_path.display());
                     continue;
                 }
             } else {
@@ -45,7 +76,7 @@ pub fn parse_dir_improved(
         }
 
         if entry_path.is_dir() {
-            let mut sub_dir = parse_dir_improved(&entry_path, max_depth - 1)?;
+            let mut sub_dir = parse_path(&entry_path, max_depth - 1)?;
 
             if let Some(dir_name) = entry_path.file_name() {
                 sub_dir.name = String::from(dir_name.to_string_lossy());
@@ -59,21 +90,16 @@ pub fn parse_dir_improved(
 }
 
 pub fn parse_dir_from_string(
-    dir_path: String,
+    path_str: String,
     max_depth: usize
 ) -> Result<file::File, ParseError> {
-    let path = Path::new(&dir_path);
+    let path = Path::new(&path_str);
 
-    // Validate path exists
     if !path.exists() {
         return Err(ParseError::InvalidPath);
     }
 
-    if !path.is_dir() {
-        return Err(ParseError::InvalidPath);
-    }
-
-    parse_dir_improved(path, max_depth)
+    parse_path(path, max_depth)
 }
 
 #[cfg(test)]
