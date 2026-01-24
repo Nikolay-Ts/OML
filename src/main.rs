@@ -1,11 +1,23 @@
-
 mod core;
 mod cpp;
+mod cli;
 
-use core::file::File;
+use clap::Parser;
+use cli::oml::OmlCli;
 
 fn main() {
-    let _ = File::init(None, None, None);
+    let cli = OmlCli::parse();
 
-    println!("Hello, world!");
+    let files = match cli.get_files() {
+        Ok(files) => files,
+        Err(e) =>  {
+            eprintln!("An error was encountered when parsing the input files: {:?}", e);
+            return;
+        }
+    };
+
+    for file in files {
+        println!("file has name {}", file.name);
+    }
+
 }
