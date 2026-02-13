@@ -1,0 +1,7 @@
+class Vehicle {
+    string make;
+    string model;
+    int32 year;
+    optional double mileage;
+    optional string color;
+}

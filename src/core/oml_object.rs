@@ -52,6 +52,7 @@ impl Variable {
 pub struct OmlObject {
     pub oml_type: ObjectType,
     pub name: String,
+    pub file_name: String,
     pub variables: Vec<Variable>
 }
 
@@ -64,17 +65,23 @@ impl OmlObject {
         Self {
             oml_type: ObjectType::UNDECIDED,
             name: String::from(""),
+            file_name: String::from(""),
             variables: vec![]
         }
     }
 
-    pub fn get_from_file(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let path = Path::new(file_path);
+    pub fn get_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let content = fs::read_to_string(path)?;
+
+        let file_stem = path.file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
 
         let mut oml_object = Self {
             oml_type: ObjectType::UNDECIDED,
             name: String::from("Nothing"),
+            file_name: file_stem,
             variables: vec![]
         };
 

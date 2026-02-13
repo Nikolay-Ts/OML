@@ -1,8 +1,10 @@
+use std::path::Path;
 use crate::core::oml_object::OmlObject;
 
 #[test]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let obj = OmlObject::get_from_file("src/core/test/oml_files/hello.oml")?;
+    let path = Path::new("src/core/test/oml_files/hello.oml");
+    let obj = OmlObject::get_from_file(path)?;
     println!("{:?}", obj);
 
     Ok(())

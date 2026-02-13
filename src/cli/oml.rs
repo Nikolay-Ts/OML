@@ -1,18 +1,18 @@
-use clap::Parser;
+use clap::{Parser, CommandFactory};
 use crate::core::errors;
 use crate::core::dir_parser::parse_dir_from_string;
-use crate::core::file;
+use crate::core::oml_object::OmlObject;
 
 #[derive(Parser)]
 #[command(name = "oml")]
-#[command(about = "Parse OML files and generate C++ headers", long_about = None)]
+#[command(about = "Parse OML files and generate code from .oml definitions", long_about = None)]
 pub struct OmlCli {
 
     // names of the directories / oml files
     inputs: Option<Vec<String>>,
 
     #[arg(short, long, default_value = "./oml_output")]
-    output: String,
+    pub output: String,
 
     // if oml should check files within folders recursively
     #[arg(short, long)]
@@ -24,7 +24,7 @@ pub struct OmlCli {
     // language conversions
 
     #[arg(long)]
-    cpp: bool,
+    pub cpp: bool,
 
     #[arg(long)]
     python: bool,
@@ -43,18 +43,28 @@ pub struct OmlCli {
 }
 
 impl OmlCli {
-    pub fn get_files(self) -> Result<Vec<file::File>, errors::ParseError> {
-        if self.inputs.is_none() {
-            eprintln!("no arguments were given");
-            return Err(errors::ParseError::InvalidPath);
-        }
+    pub fn has_inputs(&self) -> bool {
+        self.inputs.is_some()
+    }
 
-        let input_files = self.inputs.unwrap();
-        let mut files = Vec::with_capacity(input_files.len());
+    pub fn print_help() {
+        Self::command().print_help().unwrap();
+        println!();
+    }
+
+    pub fn get_files(&self) -> Result<Vec<OmlObject>, errors::ParseError> {
+        let input_files = match &self.inputs {
+            Some(inputs) => inputs,
+            None => {
+                return Err(errors::ParseError::InvalidPath);
+            }
+        };
+
+        let mut files = Vec::new();
 
         for file_name in input_files {
-            let file = parse_dir_from_string(file_name.clone(), self.depth)?;
-            files.push(file);
+            let mut parsed = parse_dir_from_string(file_name.clone(), self.depth)?;
+            files.append(&mut parsed);
         }
 
         Ok(files)

@@ -10,9 +10,11 @@ pub fn oml_to_cpp(oml_object: &OmlObject, file_name: &String) -> Result<String, 
     writeln!(cpp_file, "// This file has been generated from {}.oml", file_name)?;
     writeln!(cpp_file, "#ifndef {}", header_guard)?;
     writeln!(cpp_file, "#define {}", header_guard)?;
-    writeln!(cpp_file, "#\n#include <cstdint>")?;
+    writeln!(cpp_file)?;
+    writeln!(cpp_file, "#include <cstdint>")?;
     writeln!(cpp_file, "#include <string>")?;
-    writeln!(cpp_file, "#include <optional>\n")?;
+    writeln!(cpp_file, "#include <optional>")?;
+    writeln!(cpp_file, "#include <utility>\n")?;
 
     match &oml_object.oml_type {
         ObjectType::ENUM => generate_enum(oml_object, &mut cpp_file)?,
@@ -59,54 +61,53 @@ fn generate_class_or_struct(
 
     writeln!(cpp_file, "{} {} {{", oml_type, oml_object.name)?;
 
-    generate_variables(&oml_object.variables, cpp_file)?;
-    
+    // Public section: constructors, special members, getters/setters, public vars
+    writeln!(cpp_file, "public:")?;
+    generate_constructors(oml_object, cpp_file)?;
+    writeln!(cpp_file)?;
+    generate_copy_move_and_destructor(oml_object, cpp_file)?;
+    writeln!(cpp_file)?;
+    generate_getters_and_setters(&oml_object.variables, cpp_file)?;
+
+    // Public member variables (after getters/setters)
+    generate_visibility_vars(&oml_object.variables, cpp_file, VariableVisibility::PUBLIC, false)?;
+
+    // Protected and private member variables
+    generate_visibility_vars(&oml_object.variables, cpp_file, VariableVisibility::PROTECTED, true)?;
+    generate_visibility_vars(&oml_object.variables, cpp_file, VariableVisibility::PRIVATE, true)?;
+
     writeln!(cpp_file, "}};")?;
 
     Ok(())
 }
 
-fn generate_variables(
+/// Writes variables of a given visibility. If `write_label` is true, emits the
+/// visibility label (e.g. `private:`) before the variables.
+fn generate_visibility_vars(
     variables: &Vec<Variable>,
-    cpp_file: &mut String
+    cpp_file: &mut String,
+    visibility: VariableVisibility,
+    write_label: bool,
 ) -> Result<(), std::fmt::Error> {
-    let private_vars = variables
+    let vars: Vec<_> = variables
         .iter()
-        .filter(|v| v.visibility == VariableVisibility::PRIVATE)
-        .collect::<Vec<_>>();
+        .filter(|v| v.visibility == visibility)
+        .collect();
 
-    let protected_vars  = variables
-        .iter()
-        .filter(|v| v.visibility == VariableVisibility::PROTECTED)
-        .collect::<Vec<_>>();
-
-    let public_vars  = variables
-        .iter()
-        .filter(|v| v.visibility == VariableVisibility::PUBLIC)
-        .collect::<Vec<_>>();
-
-
-    if private_vars.len() > 0 {
-        writeln!(cpp_file, "private:")?;
+    if vars.is_empty() {
+        return Ok(());
     }
 
-    for var in private_vars {
-        convert_modifiers_and_type(var, cpp_file)?;
+    if write_label {
+        let label = match visibility {
+            VariableVisibility::PUBLIC => "public:",
+            VariableVisibility::PROTECTED => "protected:",
+            VariableVisibility::PRIVATE => "private:",
+        };
+        writeln!(cpp_file, "{}", label)?;
     }
 
-    if protected_vars.len() > 0 {
-        writeln!(cpp_file, "protected:")?;
-    }
-
-    for var in protected_vars {
-        convert_modifiers_and_type(var, cpp_file)?;
-    }
-
-    if public_vars.len() > 0 {
-        writeln!(cpp_file, "public:")?;
-    }
-
-    for var in public_vars {
+    for var in vars {
         convert_modifiers_and_type(var, cpp_file)?;
     }
 
@@ -155,11 +156,193 @@ fn convert_modifiers_and_type(
         write!(cpp_file, "{}", var_type)?;
     }
 
-    writeln!(cpp_file, "{};", var.name)?;
+    writeln!(cpp_file, " {};", var.name)?;
 
     Ok(())
 }
 
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+    }
+}
+
+fn generate_getters_and_setters(
+    variables: &Vec<Variable>,
+    cpp_file: &mut String,
+) -> Result<(), std::fmt::Error> {
+    let private_vars = variables
+        .iter()
+        .filter(|v| v.visibility == VariableVisibility::PRIVATE)
+        .collect::<Vec<_>>();
+
+    if private_vars.is_empty() {
+        return Ok(());
+    }
+
+    for var in &private_vars {
+        let cpp_type = get_full_type(var);
+        let capitalized = capitalize_first(&var.name);
+
+        // Getter
+        writeln!(cpp_file, "\t{} get{}() const {{ return {}; }}", cpp_type, capitalized, var.name)?;
+    }
+
+    writeln!(cpp_file)?;
+
+    for var in &private_vars {
+        // Skip setters for const variables
+        if var.var_mod.contains(&VariableModifier::CONST) {
+            continue;
+        }
+
+        let cpp_type = get_full_type(var);
+        let capitalized = capitalize_first(&var.name);
+
+        // Setter
+        writeln!(
+            cpp_file,
+            "\tvoid set{}(const {}& value) {{ {} = value; }}",
+            capitalized, cpp_type, var.name
+        )?;
+    }
+
+    Ok(())
+}
+
+fn get_full_type(var: &Variable) -> String {
+    let base_type = convert_type(var.var_type.as_str());
+    if var.var_mod.contains(&VariableModifier::OPTIONAL) {
+        format!("std::optional<{}>", base_type)
+    } else {
+        base_type
+    }
+}
+
+const MAX_LINE_LENGTH: usize = 120;
+
+fn write_constructor(
+    cpp_file: &mut String,
+    prefix: &str,
+    name: &str,
+    params: &[String],
+    inits: &[String],
+) -> Result<(), std::fmt::Error> {
+    let params_str = params.join(", ");
+    let inits_str = inits.join(", ");
+
+    let single_line = format!("\t{}{}({}) : {} {{}}", prefix, name, params_str, inits_str);
+
+    if single_line.len() <= MAX_LINE_LENGTH {
+        writeln!(cpp_file, "{}", single_line)?;
+    } else {
+        // Signature on first line, initializers indented on following lines
+        writeln!(cpp_file, "\t{}{}({})", prefix, name, params_str)?;
+        write!(cpp_file, "\t\t: ")?;
+
+        // Try all inits on one line after the colon
+        let colon_line = format!("\t\t: {} {{}}", inits_str);
+        if colon_line.len() <= MAX_LINE_LENGTH {
+            writeln!(cpp_file, "{} {{}}", inits_str)?;
+        } else {
+            // Each initializer on its own line
+            for (i, init) in inits.iter().enumerate() {
+                if i == 0 {
+                    writeln!(cpp_file, "{}", init)?;
+                } else {
+                    writeln!(cpp_file, "\t\t, {}", init)?;
+                }
+            }
+            writeln!(cpp_file, "\t{{}}")?;
+        }
+    }
+
+    Ok(())
+}
+
+fn generate_constructors(
+    oml_object: &OmlObject,
+    cpp_file: &mut String,
+) -> Result<(), std::fmt::Error> {
+    let all_vars: Vec<&Variable> = oml_object.variables.iter().collect();
+
+    if all_vars.is_empty() {
+        writeln!(cpp_file, "\t{}() = default;", oml_object.name)?;
+        return Ok(());
+    }
+
+    let required_vars: Vec<&&Variable> = all_vars
+        .iter()
+        .filter(|v| !v.var_mod.contains(&VariableModifier::OPTIONAL))
+        .collect();
+
+    let optional_vars: Vec<&&Variable> = all_vars
+        .iter()
+        .filter(|v| v.var_mod.contains(&VariableModifier::OPTIONAL))
+        .collect();
+
+    // Default constructor
+    writeln!(cpp_file, "\t{}() = default;", oml_object.name)?;
+
+    // Constructor with required params only (if there are optional vars, otherwise skip since
+    // the full constructor below would be identical)
+    if !required_vars.is_empty() && !optional_vars.is_empty() {
+        let params: Vec<String> = required_vars
+            .iter()
+            .map(|v| format!("{} {}", get_full_type(v), v.name))
+            .collect();
+
+        let inits: Vec<String> = required_vars
+            .iter()
+            .map(|v| format!("{}(std::move({}))", v.name, v.name))
+            .collect();
+
+        write_constructor(cpp_file, "explicit ", &oml_object.name, &params, &inits)?;
+    }
+
+    // Constructor with all params
+    {
+        let params: Vec<String> = all_vars
+            .iter()
+            .map(|v| format!("{} {}", get_full_type(v), v.name))
+            .collect();
+
+        let inits: Vec<String> = all_vars
+            .iter()
+            .map(|v| format!("{}(std::move({}))", v.name, v.name))
+            .collect();
+
+        write_constructor(cpp_file, "", &oml_object.name, &params, &inits)?;
+    }
+
+    Ok(())
+}
+
+fn generate_copy_move_and_destructor(
+    oml_object: &OmlObject,
+    cpp_file: &mut String,
+) -> Result<(), std::fmt::Error> {
+    let name = &oml_object.name;
+
+    // Copy constructor
+    writeln!(cpp_file, "\t{}(const {}& other) = default;", name, name)?;
+
+    // Move constructor
+    writeln!(cpp_file, "\t{}({}&& other) noexcept = default;", name, name)?;
+
+    // Copy assignment operator
+    writeln!(cpp_file, "\t{}& operator=(const {}& other) = default;", name, name)?;
+
+    // Move assignment operator
+    writeln!(cpp_file, "\t{}& operator=({}&& other) noexcept = default;", name, name)?;
+
+    // Destructor
+    writeln!(cpp_file, "\t~{}() = default;", name)?;
+
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -173,6 +356,7 @@ mod tests {
     #[test]
     fn test_generate_enum_basic() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Color".to_string(),
             variables: vec![
@@ -211,6 +395,7 @@ mod tests {
     #[test]
     fn test_generate_enum_single_variant() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Status".to_string(),
             variables: vec![
@@ -235,6 +420,7 @@ mod tests {
     #[test]
     fn test_generate_enum_empty() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Empty".to_string(),
             variables: vec![],
@@ -252,6 +438,7 @@ mod tests {
     #[test]
     fn test_generate_class_with_all_visibility_levels() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "TestClass".to_string(),
             variables: vec![
@@ -291,6 +478,7 @@ mod tests {
     #[test]
     fn test_generate_struct() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::STRUCT,
             name: "Point".to_string(),
             variables: vec![
@@ -322,6 +510,7 @@ mod tests {
     #[test]
     fn test_generate_class_empty() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "EmptyClass".to_string(),
             variables: vec![],
@@ -493,6 +682,7 @@ mod tests {
     #[test]
     fn test_oml_to_cpp_with_enum() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Color".to_string(),
             variables: vec![
@@ -533,6 +723,7 @@ mod tests {
     #[test]
     fn test_oml_to_cpp_with_class() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Person".to_string(),
             variables: vec![
@@ -564,6 +755,7 @@ mod tests {
     #[test]
     fn test_oml_to_cpp_header_guard_uppercase() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "MyClass".to_string(),
             variables: vec![],
@@ -579,6 +771,7 @@ mod tests {
     #[test]
     fn test_oml_to_cpp_with_undecided_type_fails() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::UNDECIDED,
             name: "Test".to_string(),
             variables: vec![],
@@ -594,6 +787,7 @@ mod tests {
     #[test]
     fn test_variables_grouped_by_visibility() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![
@@ -621,23 +815,21 @@ mod tests {
         let mut output = String::new();
         generate_class_or_struct(&oml_object, &mut output).unwrap();
 
-
-        // Find positions
+        // Verify public section comes before private section
+        let public_pos = output.find("public:").unwrap();
         let private_pos = output.find("private:").unwrap();
-        let priv1_pos = output.find("priv1").unwrap();
-        let _pub1_pos = output.find("pub1").unwrap();
-        let _pub2_pos = output.find("pub2").unwrap();
+        assert!(public_pos < private_pos);
 
-        // Verify private section appears before private variables
-        assert!(private_pos < priv1_pos);
-
-        // Note: The current implementation doesn't guarantee public vars are grouped together
-        // This test documents current behavior
+        // Verify private variable declarations appear in the private section
+        // (look for the tab-indented declaration, not constructor params)
+        let priv1_decl = output.find("\tint32_t priv1;").unwrap();
+        assert!(priv1_decl > private_pos);
     }
 
     #[test]
     fn test_only_private_variables() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "PrivateOnly".to_string(),
             variables: vec![
@@ -660,13 +852,15 @@ mod tests {
         generate_class_or_struct(&oml_object, &mut output).unwrap();
 
         assert!(output.contains("private:"));
-        assert!(!output.contains("public:"));
+        // public: is now always present for constructors/getters/setters
+        assert!(output.contains("public:"));
         assert!(!output.contains("protected:"));
     }
 
     #[test]
     fn test_only_public_variables() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "PublicOnly".to_string(),
             variables: vec![
@@ -691,6 +885,7 @@ mod tests {
     #[test]
     fn test_complex_class_with_all_features() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "ComplexClass".to_string(),
             variables: vec![
@@ -727,6 +922,7 @@ mod tests {
     #[test]
     fn test_multiple_variables_same_visibility() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "MultiVar".to_string(),
             variables: vec![
@@ -762,12 +958,14 @@ mod tests {
     #[test]
     fn test_struct_vs_class_keyword() {
         let class_obj = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "MyClass".to_string(),
             variables: vec![],
         };
 
         let struct_obj = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::STRUCT,
             name: "MyStruct".to_string(),
             variables: vec![],
@@ -809,6 +1007,7 @@ mod tests {
     #[test]
     fn test_empty_variable_name() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![
@@ -830,6 +1029,7 @@ mod tests {
     #[test]
     fn test_special_characters_in_class_name() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "My_Class-123".to_string(),
             variables: vec![],
@@ -846,6 +1046,7 @@ mod tests {
         let long_name = "this_is_a_very_long_variable_name_that_should_still_work_correctly";
 
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![
@@ -869,6 +1070,7 @@ mod tests {
     #[test]
     fn test_enum_has_proper_indentation() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Test".to_string(),
             variables: vec![
@@ -890,6 +1092,7 @@ mod tests {
     #[test]
     fn test_full_output_has_proper_structure() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![],
@@ -915,6 +1118,7 @@ mod tests {
     #[test]
     fn test_semicolon_after_class_closing_brace() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![],
@@ -929,6 +1133,7 @@ mod tests {
     #[test]
     fn test_semicolon_after_enum_closing_brace() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Test".to_string(),
             variables: vec![],
@@ -946,6 +1151,7 @@ mod tests {
     fn test_bug_include_has_backslash_n() {
         // Test for the bug in line 7: writeln!(cpp_file, "#\ninclude <cstdint>")?;
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![],
@@ -964,6 +1170,7 @@ mod tests {
     #[test]
     fn test_variable_output_has_semicolon() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![
@@ -987,6 +1194,7 @@ mod tests {
     #[test]
     fn test_protected_section_visibility() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Test".to_string(),
             variables: vec![
@@ -1028,6 +1236,7 @@ mod tests {
         }
 
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "LargeClass".to_string(),
             variables,
@@ -1054,6 +1263,7 @@ mod tests {
         }
 
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "LargeEnum".to_string(),
             variables,
@@ -1084,6 +1294,7 @@ mod tests {
         }
 
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "AllTypes".to_string(),
             variables,
@@ -1104,6 +1315,7 @@ mod tests {
     #[test]
     fn test_string_type_in_class() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "StringTest".to_string(),
             variables: vec![
@@ -1125,6 +1337,7 @@ mod tests {
     #[test]
     fn test_bool_and_char_types() {
         let oml_object = OmlObject {
+            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "BasicTypes".to_string(),
             variables: vec![
