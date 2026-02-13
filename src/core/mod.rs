@@ -6,3 +6,4 @@ pub mod errors;
 #[cfg(test)]
 mod test;
 mod utils;
+mod generate;
