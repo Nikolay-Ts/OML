@@ -23,3 +23,12 @@ macro_rules! define_error {
         impl std::error::Error for $error_name {}
     };
 }
+
+#[macro_export]
+macro_rules! data_struct_init {
+    ($language_name: ident) => {
+        impl $language_name {
+            pub fn new(use_data_class: bool) -> Self { Self { use_data_class } }
+        }
+    };
+}
