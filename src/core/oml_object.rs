@@ -36,18 +36,6 @@ pub struct Variable {
     pub name: String,
 }
 
-/// for testing purposes only
-impl Variable {
-    fn new(var_mod: Vec<VariableModifier>,visibility: VariableVisibility, var_type: String, name: String) -> Self {
-        Variable {
-            var_mod,
-            visibility,
-            var_type,
-            name
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct OmlObject {
     pub oml_type: ObjectType,
@@ -60,15 +48,6 @@ impl OmlObject {
     const CLASS_NAME: &'static str = "class";
     const ENUM_NAME: &'static str = "enum";
     const STRUCT_NAME: &'static str = "struct";
-
-    fn new() -> Self {
-        Self {
-            oml_type: ObjectType::UNDECIDED,
-            name: String::from(""),
-            file_name: String::from(""),
-            variables: vec![]
-        }
-    }
 
     pub fn get_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let content = fs::read_to_string(path)?;
@@ -98,7 +77,10 @@ impl OmlObject {
 
         for line in lines {
             let trimmed = line.trim();
-            let mut processed_line = String::new();
+            // needed or else the compiler complains. However if the mut is remove, the program crashes.
+            // #[allow(unused_mut)]
+            #[allow(unused_assignments)]
+            let mut processed_line: String = String::new();
             let mut line_ref: &str = trimmed;
 
             if commenting {
@@ -374,7 +356,7 @@ mod test {
 
     #[test]
     fn test_assign_name() {
-        let mut oml_obj = OmlObject::new();
+        let mut oml_obj: OmlObject;
 
         for valid_name in VALID_NAMES {
             oml_obj.assign_obj_name(valid_name).expect("this should not happen");

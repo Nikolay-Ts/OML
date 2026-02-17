@@ -5,7 +5,7 @@ use crate::core::generate::Generate;
 use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
 };
-use crate::cpp::oml_cpp::CppGenerator;
+use crate::generators::cpp::oml_cpp::CppGenerator;
 
 const TEST_RESULTS_DIR: &str = "test_results";
 

@@ -3,7 +3,8 @@ use crate::core::errors;
 use crate::core::dir_parser::parse_dir_from_string;
 use crate::core::generate::Generate;
 use crate::core::oml_object::OmlObject;
-use crate::cpp::oml_cpp::CppGenerator;
+use crate::generators::cpp::oml_cpp::CppGenerator;
+use crate::generators::kotlin::oml_kotlin::KotlinGenerator;
 
 #[derive(Parser)]
 #[command(name = "oml")]
@@ -26,7 +27,7 @@ pub struct OmlCli {
     // language conversions
 
     #[arg(long)]
-    pub cpp: bool,
+    cpp: bool,
 
     #[arg(long)]
     python: bool,
@@ -42,6 +43,9 @@ pub struct OmlCli {
 
     #[arg(long)]
     typescript: bool,
+
+    #[arg(long)]
+    no_data_class: bool,
 }
 
 impl OmlCli {
@@ -82,7 +86,9 @@ impl OmlCli {
         // TODO: add other generators as they are implemented
         // if self.python { generators.push(Box::new(PythonGenerator)); }
         // if self.java { generators.push(Box::new(JavaGenerator)); }
-        // if self.kotlin { generators.push(Box::new(KotlinGenerator)); }
+        if self.kotlin {
+            generators.push(Box::new(KotlinGenerator::new(!self.no_data_class)));
+        }
         // if self.rust { generators.push(Box::new(RustGenerator)); }
         // if self.typescript { generators.push(Box::new(TypescriptGenerator)); }
 

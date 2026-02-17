@@ -1,6 +1,6 @@
 mod core;
-mod cpp;
 mod cli;
+mod generators;
 
 use std::fs;
 use std::path::Path;
