@@ -1,10 +1,11 @@
 use std::fs;
 use std::path::Path;
 
+use crate::core::generate::Generate;
 use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
 };
-use crate::cpp::oml_cpp::oml_to_cpp;
+use crate::cpp::oml_cpp::CppGenerator;
 
 const TEST_RESULTS_DIR: &str = "test_results";
 
@@ -15,14 +16,16 @@ fn ensure_test_results_dir() {
 fn generate_and_write(oml_path: &str, file_name: &str) -> String {
     ensure_test_results_dir();
 
+    let generator = CppGenerator;
+
     let path = Path::new(oml_path);
     let oml_object = OmlObject::get_from_file(path)
         .expect(&format!("Failed to parse OML file: {}", oml_path));
 
-    let cpp_output = oml_to_cpp(&oml_object, &file_name.to_string())
+    let cpp_output = generator.generate(&oml_object, file_name)
         .expect(&format!("Failed to generate C++ for: {}", file_name));
 
-    let output_path = format!("{}/{}.h", TEST_RESULTS_DIR, file_name);
+    let output_path = format!("{}/{}.{}", TEST_RESULTS_DIR, file_name, generator.extension());
     fs::write(&output_path, &cpp_output)
         .expect(&format!("Failed to write output file: {}", output_path));
 
@@ -143,7 +146,8 @@ fn test_color_enum_generates_cpp_file() {
         ],
     };
 
-    let output = oml_to_cpp(&oml_object, &"Color".to_string()).unwrap();
+    let generator = CppGenerator;
+    let output = generator.generate(&oml_object, "Color").unwrap();
 
     let output_path = format!("{}/Color.h", TEST_RESULTS_DIR);
     fs::write(&output_path, &output).expect("Failed to write Color.h");

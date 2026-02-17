@@ -1,34 +1,41 @@
 use crate::core::oml_object::{
     OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
 };
+use crate::core::generate::Generate;
+use std::error::Error;
 use std::fmt::Write;
 
-pub fn oml_to_cpp(oml_object: &OmlObject, file_name: &String) -> Result<String, std::fmt::Error> {
-    let mut cpp_file = String::from("");
-    let header_guard = format!("{}_H", file_name.to_uppercase());
+pub struct CppGenerator;
 
-    writeln!(cpp_file, "// This file has been generated from {}.oml", file_name)?;
-    writeln!(cpp_file, "#ifndef {}", header_guard)?;
-    writeln!(cpp_file, "#define {}", header_guard)?;
-    writeln!(cpp_file)?;
-    writeln!(cpp_file, "#include <cstdint>")?;
-    writeln!(cpp_file, "#include <string>")?;
-    writeln!(cpp_file, "#include <optional>")?;
-    writeln!(cpp_file, "#include <utility>\n")?;
+impl Generate for CppGenerator {
+    fn generate(&self, oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn Error>> {
+        let mut cpp_file = String::new();
+        let header_guard = format!("{}_H", file_name.to_uppercase());
 
-    match &oml_object.oml_type {
-        ObjectType::ENUM => generate_enum(oml_object, &mut cpp_file)?,
-        ObjectType::CLASS | ObjectType::STRUCT  => generate_class_or_struct(oml_object, &mut cpp_file)?,
-        ObjectType::UNDECIDED => return Err(std::fmt::Error),
+        writeln!(cpp_file, "// This file has been generated from {}.oml", file_name)?;
+        writeln!(cpp_file, "#ifndef {}", header_guard)?;
+        writeln!(cpp_file, "#define {}", header_guard)?;
+        writeln!(cpp_file)?;
+        writeln!(cpp_file, "#include <cstdint>")?;
+        writeln!(cpp_file, "#include <string>")?;
+        writeln!(cpp_file, "#include <optional>")?;
+        writeln!(cpp_file, "#include <utility>\n")?;
+
+        match &oml_object.oml_type {
+            ObjectType::ENUM => generate_enum(oml_object, &mut cpp_file)?,
+            ObjectType::CLASS | ObjectType::STRUCT => generate_class_or_struct(oml_object, &mut cpp_file)?,
+            ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
+        }
+
+        writeln!(cpp_file, "#endif // {}", header_guard)?;
+
+        Ok(cpp_file)
     }
 
-
-    writeln!(cpp_file, "#endif // {}", header_guard)?;
-    
-    Ok(cpp_file)
+    fn extension(&self) -> &str {
+        "h"
+    }
 }
-
-
 
 fn generate_enum(oml_object: &OmlObject, cpp_file: &mut String) -> Result<(), std::fmt::Error> {
     writeln!(cpp_file, "enum class {} {{", oml_object.name)?;
@@ -347,9 +354,14 @@ fn generate_copy_move_and_destructor(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::generate::Generate;
     use crate::core::oml_object::{
         OmlObject, ObjectType, Variable, VariableVisibility, VariableModifier
     };
+
+    fn oml_to_cpp(oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn std::error::Error>> {
+        CppGenerator.generate(oml_object, file_name)
+    }
 
     // ========== ENUM GENERATION TESTS ==========
 
@@ -701,7 +713,7 @@ mod tests {
             ],
         };
 
-        let result = oml_to_cpp(&oml_object, &"Color".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "Color").unwrap();
 
         // Check header guard
         assert!(result.contains("#ifndef COLOR_H"));
@@ -742,7 +754,7 @@ mod tests {
             ],
         };
 
-        let result = oml_to_cpp(&oml_object, &"Person".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "Person").unwrap();
 
         assert!(result.contains("#ifndef PERSON_H"));
         assert!(result.contains("#define PERSON_H"));
@@ -761,7 +773,7 @@ mod tests {
             variables: vec![],
         };
 
-        let result = oml_to_cpp(&oml_object, &"my_class".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "my_class").unwrap();
 
         assert!(result.contains("#ifndef MY_CLASS_H"));
         assert!(result.contains("#define MY_CLASS_H"));
@@ -777,7 +789,7 @@ mod tests {
             variables: vec![],
         };
 
-        let result = oml_to_cpp(&oml_object, &"Test".to_string());
+        let result = oml_to_cpp(&oml_object, "Test");
 
         assert!(result.is_err());
     }
@@ -910,7 +922,7 @@ mod tests {
             ],
         };
 
-        let result = oml_to_cpp(&oml_object, &"ComplexClass".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "ComplexClass").unwrap();
 
         assert!(result.contains("static const int32_t"));
         assert!(result.contains("std::optional<std::string>"));
@@ -1020,7 +1032,7 @@ mod tests {
             ],
         };
 
-        let result = oml_to_cpp(&oml_object, &"Test".to_string());
+        let result = oml_to_cpp(&oml_object, "Test");
 
         // Should still generate, even with empty name
         assert!(result.is_ok());
@@ -1098,7 +1110,7 @@ mod tests {
             variables: vec![],
         };
 
-        let result = oml_to_cpp(&oml_object, &"Test".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "Test").unwrap();
 
         // Verify order of sections
         let comment_pos = result.find("//").unwrap();
@@ -1157,7 +1169,7 @@ mod tests {
             variables: vec![],
         };
 
-        let result = oml_to_cpp(&oml_object, &"Test".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "Test").unwrap();
 
         // This will fail with current code due to the bug
         // The correct line should be: writeln!(cpp_file, "#include <cstdint>")?;
@@ -1183,7 +1195,7 @@ mod tests {
             ],
         };
 
-        let result = oml_to_cpp(&oml_object, &"Test".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "Test").unwrap();
 
         // Variables should end with semicolon
         // Note: Current implementation uses write! instead of writeln! for variable names
@@ -1242,7 +1254,7 @@ mod tests {
             variables,
         };
 
-        let result = oml_to_cpp(&oml_object, &"LargeClass".to_string());
+        let result = oml_to_cpp(&oml_object, "LargeClass");
 
         assert!(result.is_ok());
         let output = result.unwrap();
@@ -1300,7 +1312,7 @@ mod tests {
             variables,
         };
 
-        let result = oml_to_cpp(&oml_object, &"AllTypes".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "AllTypes").unwrap();
 
         assert!(result.contains("int8_t"));
         assert!(result.contains("int16_t"));
@@ -1328,7 +1340,7 @@ mod tests {
             ],
         };
 
-        let result = oml_to_cpp(&oml_object, &"StringTest".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "StringTest").unwrap();
 
         assert!(result.contains("std::string"));
         assert!(result.contains("#include <string>"));
@@ -1356,7 +1368,7 @@ mod tests {
             ],
         };
 
-        let result = oml_to_cpp(&oml_object, &"BasicTypes".to_string()).unwrap();
+        let result = oml_to_cpp(&oml_object, "BasicTypes").unwrap();
 
         assert!(result.contains("bool"));
         assert!(result.contains("char"));

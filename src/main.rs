@@ -7,7 +7,6 @@ use std::path::Path;
 
 use clap::Parser;
 use cli::oml::OmlCli;
-use crate::cpp::oml_cpp::oml_to_cpp;
 
 fn main() {
     let cli = OmlCli::parse();
@@ -30,28 +29,37 @@ fn main() {
         return;
     }
 
-    if cli.cpp {
-        let output_dir = Path::new(&cli.output);
+    let generators= cli.get_generators();
 
-        if let Err(e) = fs::create_dir_all(output_dir) {
-            eprintln!("Failed to create output directory '{}': {}", cli.output, e);
-            return;
-        }
+    if generators.is_empty() {
+        eprintln!("No language flag specified (e.g. --cpp)");
+        return;
+    }
 
+    let output_dir = Path::new(&cli.output);
+
+    if let Err(e) = fs::create_dir_all(output_dir) {
+        eprintln!("Failed to create output directory '{}': {}", cli.output, e);
+        return;
+    }
+
+    for generator in &generators {
         for object in &objects {
             let file_name = &object.file_name;
 
-            match oml_to_cpp(object, file_name) {
-                Ok(cpp_content) => {
-                    let output_path = output_dir.join(format!("{}.h", file_name));
-                    if let Err(e) = fs::write(&output_path, &cpp_content) {
+            match generator.generate(object, file_name) {
+                Ok(content) => {
+                    let output_path = output_dir.join(
+                        format!("{}.{}", file_name, generator.extension())
+                    );
+                    if let Err(e) = fs::write(&output_path, &content) {
                         eprintln!("Failed to write {}: {}", output_path.display(), e);
                     } else {
                         println!("Generated {}", output_path.display());
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to generate C++ for {}: {}", file_name, e);
+                    eprintln!("Failed to generate {} for {}: {}", generator.extension(), file_name, e);
                 }
             }
         }

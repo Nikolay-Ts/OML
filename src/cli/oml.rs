@@ -1,7 +1,9 @@
 use clap::{Parser, CommandFactory};
 use crate::core::errors;
 use crate::core::dir_parser::parse_dir_from_string;
+use crate::core::generate::Generate;
 use crate::core::oml_object::OmlObject;
+use crate::cpp::oml_cpp::CppGenerator;
 
 #[derive(Parser)]
 #[command(name = "oml")]
@@ -68,5 +70,22 @@ impl OmlCli {
         }
 
         Ok(files)
+    }
+
+    pub fn get_generators(&self) -> Vec<Box<dyn Generate>> {
+        let mut generators: Vec<Box<dyn Generate>> = Vec::new();
+
+        if self.cpp {
+            generators.push(Box::new(CppGenerator));
+        }
+
+        // TODO: add other generators as they are implemented
+        // if self.python { generators.push(Box::new(PythonGenerator)); }
+        // if self.java { generators.push(Box::new(JavaGenerator)); }
+        // if self.kotlin { generators.push(Box::new(KotlinGenerator)); }
+        // if self.rust { generators.push(Box::new(RustGenerator)); }
+        // if self.typescript { generators.push(Box::new(TypescriptGenerator)); }
+
+        generators
     }
 }
