@@ -16,10 +16,6 @@ impl Generate for CppGenerator {
         writeln!(cpp_file, "#ifndef {}", header_guard)?;
         writeln!(cpp_file, "#define {}", header_guard)?;
         writeln!(cpp_file)?;
-        writeln!(cpp_file, "#include <cstdint>")?;
-        writeln!(cpp_file, "#include <string>")?;
-        writeln!(cpp_file, "#include <optional>")?;
-        writeln!(cpp_file, "#include <utility>\n")?;
 
         match &oml_object.oml_type {
             ObjectType::ENUM => generate_enum(oml_object, &mut cpp_file)?,
@@ -27,7 +23,7 @@ impl Generate for CppGenerator {
             ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
         }
 
-        writeln!(cpp_file, "#endif // {}", header_guard)?;
+        writeln!(cpp_file, "#endif // {}\n", header_guard)?;
 
         Ok(cpp_file)
     }
@@ -65,6 +61,11 @@ fn generate_class_or_struct(
         ObjectType::STRUCT => "struct",
         _ => return Err(std::fmt::Error)
     };
+
+    writeln!(cpp_file, "#include <cstdint>")?;
+    writeln!(cpp_file, "#include <string>")?;
+    writeln!(cpp_file, "#include <optional>")?;
+    writeln!(cpp_file, "#include <utility>\n")?;
 
     writeln!(cpp_file, "{} {} {{", oml_type, oml_object.name)?;
 
