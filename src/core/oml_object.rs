@@ -169,7 +169,7 @@ impl OmlObject {
         }
 
         if !body_lines.is_empty() {
-            self.variables = Self::extract_object_variables(body_lines)?;
+            self.variables = Self::extract_object_variables(body_lines, &self.oml_type)?;
         }
 
         Ok(())
@@ -217,7 +217,7 @@ impl OmlObject {
         ) || Self::is_valid_name(token)
     }
 
-    fn extract_object_variables(lines: Vec<String>) -> Result<Vec<Variable>, Box<dyn std::error::Error>> {
+    fn extract_object_variables(lines: Vec<String>, oml_type: &ObjectType) -> Result<Vec<Variable>, Box<dyn std::error::Error>> {
         let mut vars: Vec<Variable> = Vec::new();
 
         for line in lines {
@@ -227,6 +227,19 @@ impl OmlObject {
             }
 
             let cleaned = trimmed.trim_end_matches(|c| c == ';' || c == '\n').trim();
+
+            if *oml_type == ObjectType::ENUM {
+                if !Self::is_valid_name(cleaned) {
+                    return Err(format!("Invalid enum variant name: '{}'", cleaned).into());
+                }
+                vars.push(Variable {
+                    var_mod: vec![],
+                    visibility: VariableVisibility::PUBLIC,
+                    var_type: String::new(),
+                    name: cleaned.to_string(),
+                });
+                continue;
+            }
 
             match Self::parse_variable_declaration(cleaned) {
                 Ok(var) => vars.push(var),
