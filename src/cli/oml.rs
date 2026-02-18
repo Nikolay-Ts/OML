@@ -2,9 +2,13 @@ use clap::{Parser, CommandFactory};
 use crate::core::errors;
 use crate::core::dir_parser::parse_dir_from_string;
 use crate::core::generate::Generate;
-use crate::core::oml_object::OmlObject;
-use crate::generators::cpp::oml_cpp::CppGenerator;
-use crate::generators::kotlin::oml_kotlin::KotlinGenerator;
+use crate::core::oml_object::OmlFile;
+
+use crate::generators::{
+    cpp::oml_cpp::CppGenerator,
+    kotlin::oml_kotlin::KotlinGenerator,
+    python::oml_python::PythonGenerator
+};
 
 #[derive(Parser)]
 #[command(name = "oml")]
@@ -23,6 +27,9 @@ pub struct OmlCli {
 
     #[arg(short, long, default_value_t = 3)]
     depth: usize,
+
+    #[arg(long)]
+    use_data_class: bool,
 
     // language conversions
 
@@ -43,9 +50,6 @@ pub struct OmlCli {
 
     #[arg(long)]
     typescript: bool,
-
-    #[arg(long)]
-    no_data_class: bool,
 }
 
 impl OmlCli {
@@ -58,7 +62,7 @@ impl OmlCli {
         println!();
     }
 
-    pub fn get_files(&self) -> Result<Vec<OmlObject>, errors::ParseError> {
+    pub fn get_files(&self) -> Result<Vec<OmlFile>, errors::ParseError> {
         let input_files = match &self.inputs {
             Some(inputs) => inputs,
             None => {
@@ -83,12 +87,16 @@ impl OmlCli {
             generators.push(Box::new(CppGenerator));
         }
 
-        // TODO: add other generators as they are implemented
-        // if self.python { generators.push(Box::new(PythonGenerator)); }
-        // if self.java { generators.push(Box::new(JavaGenerator)); }
-        if self.kotlin {
-            generators.push(Box::new(KotlinGenerator::new(!self.no_data_class)));
+        if self.python {
+            generators.push(Box::new(PythonGenerator::new(self.use_data_class)));
         }
+        if self.kotlin {
+            generators.push(Box::new(KotlinGenerator::new(self.use_data_class)));
+        }
+
+
+        // TODO: add other generators as they are implemented
+        // if self.java { generators.push(Box::new(JavaGenerator)); }
         // if self.rust { generators.push(Box::new(RustGenerator)); }
         // if self.typescript { generators.push(Box::new(TypescriptGenerator)); }
 

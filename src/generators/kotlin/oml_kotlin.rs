@@ -249,7 +249,6 @@ mod tests {
     #[test]
     fn test_generate_enum_basic() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Color".to_string(),
             variables: vec![
@@ -286,7 +285,6 @@ mod tests {
     #[test]
     fn test_generate_enum_single_variant() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Single".to_string(),
             variables: vec![
@@ -308,7 +306,6 @@ mod tests {
     #[test]
     fn test_generate_enum_empty() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Empty".to_string(),
             variables: vec![],
@@ -324,7 +321,6 @@ mod tests {
     #[test]
     fn test_data_class_basic() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Person".to_string(),
             variables: vec![
@@ -352,7 +348,6 @@ mod tests {
     #[test]
     fn test_regular_class_basic() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Person".to_string(),
             variables: vec![
@@ -381,7 +376,6 @@ mod tests {
     #[test]
     fn test_struct_always_data_class() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::STRUCT,
             name: "Point".to_string(),
             variables: vec![
@@ -408,7 +402,6 @@ mod tests {
     #[test]
     fn test_data_class_empty() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Empty".to_string(),
             variables: vec![],
@@ -422,7 +415,6 @@ mod tests {
     #[test]
     fn test_class_with_optional_fields() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "User".to_string(),
             variables: vec![
@@ -456,7 +448,6 @@ mod tests {
     #[test]
     fn test_class_optional_params_come_after_required() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Mixed".to_string(),
             variables: vec![
@@ -485,7 +476,6 @@ mod tests {
     #[test]
     fn test_const_modifier_generates_val() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Config".to_string(),
             variables: vec![
@@ -506,7 +496,6 @@ mod tests {
     #[test]
     fn test_mut_modifier_generates_var() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Config".to_string(),
             variables: vec![
@@ -526,7 +515,6 @@ mod tests {
     #[test]
     fn test_mut_overrides_const() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Config".to_string(),
             variables: vec![
@@ -547,7 +535,6 @@ mod tests {
     #[test]
     fn test_static_modifier_companion_object() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Config".to_string(),
             variables: vec![
@@ -574,7 +561,6 @@ mod tests {
     #[test]
     fn test_static_const_in_companion() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Constants".to_string(),
             variables: vec![
@@ -595,7 +581,6 @@ mod tests {
     #[test]
     fn test_optional_with_static() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Config".to_string(),
             variables: vec![
@@ -618,7 +603,6 @@ mod tests {
     #[test]
     fn test_public_visibility_omitted() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Foo".to_string(),
             variables: vec![
@@ -640,7 +624,6 @@ mod tests {
     #[test]
     fn test_private_visibility() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Foo".to_string(),
             variables: vec![
@@ -660,7 +643,6 @@ mod tests {
     #[test]
     fn test_protected_visibility() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Foo".to_string(),
             variables: vec![
@@ -680,7 +662,6 @@ mod tests {
     #[test]
     fn test_all_visibility_levels() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Mixed".to_string(),
             variables: vec![
@@ -752,7 +733,6 @@ mod tests {
     #[test]
     fn test_oml_to_kotlin_with_enum() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "Direction".to_string(),
             variables: vec![
@@ -777,7 +757,6 @@ mod tests {
     #[test]
     fn test_oml_to_kotlin_with_class() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Foo".to_string(),
             variables: vec![
@@ -800,7 +779,6 @@ mod tests {
     #[test]
     fn test_oml_to_kotlin_with_undecided_type_fails() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::UNDECIDED,
             name: "Bad".to_string(),
             variables: vec![],
@@ -813,7 +791,6 @@ mod tests {
     #[test]
     fn test_full_output_has_proper_structure() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Example".to_string(),
             variables: vec![
@@ -865,7 +842,6 @@ mod tests {
         }
 
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "ManyVars".to_string(),
             variables,
@@ -889,7 +865,6 @@ mod tests {
         }).collect();
 
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::ENUM,
             name: "BigEnum".to_string(),
             variables,
@@ -921,7 +896,6 @@ mod tests {
         }).collect();
 
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "AllTypes".to_string(),
             variables,
@@ -938,7 +912,6 @@ mod tests {
     #[test]
     fn test_optional_with_const() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Foo".to_string(),
             variables: vec![
@@ -958,7 +931,6 @@ mod tests {
     #[test]
     fn test_variable_with_all_modifiers() {
         let oml_object = OmlObject {
-            file_name: String::new(),
             oml_type: ObjectType::CLASS,
             name: "Full".to_string(),
             variables: vec![

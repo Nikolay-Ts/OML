@@ -40,8 +40,14 @@ pub struct Variable {
 pub struct OmlObject {
     pub oml_type: ObjectType,
     pub name: String,
-    pub file_name: String,
     pub variables: Vec<Variable>
+}
+
+/// Groups all OML objects parsed from a single file.
+#[derive(Debug)]
+pub struct OmlFile {
+    pub file_name: String,
+    pub objects: Vec<OmlObject>,
 }
 
 impl OmlObject {
@@ -49,36 +55,22 @@ impl OmlObject {
     const ENUM_NAME: &'static str = "enum";
     const STRUCT_NAME: &'static str = "struct";
 
-    pub fn get_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn get_from_file(path: &Path) -> Result<Vec<Self>, Box<dyn std::error::Error>> {
         let content = fs::read_to_string(path)?;
-
-        let file_stem = path.file_stem()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-
-        let mut oml_object = Self {
-            oml_type: ObjectType::UNDECIDED,
-            name: String::from("Nothing"),
-            file_name: file_stem,
-            variables: vec![]
-        };
-
-        oml_object.scan_file(content)?;
-
-        Ok(oml_object)
+        Self::scan_file(content)
     }
 
-    fn scan_file(&mut self, content: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn scan_file(content: String) -> Result<Vec<Self>, Box<dyn std::error::Error>> {
         let lines: Vec<&str> = content.lines().collect();
+        let mut results: Vec<Self> = Vec::new();
+
+        let mut current: Option<Self> = None;
         let mut inside_body = false;
         let mut commenting = false;
         let mut body_lines: Vec<String> = Vec::new();
 
         for line in lines {
             let trimmed = line.trim();
-            // needed or else the compiler complains. However if the mut is remove, the program crashes.
-            // #[allow(unused_mut)]
             #[allow(unused_assignments)]
             let mut processed_line: String = String::new();
             let mut line_ref: &str = trimmed;
@@ -125,26 +117,23 @@ impl OmlObject {
                     continue;
                 }
 
-                match tokens[0] {
-                    Self::CLASS_NAME => {
-                        self.oml_type = ObjectType::CLASS;
-                        if tokens.len() > 1 {
-                            self.assign_obj_name(tokens[1])?;
-                        }
+                let obj_type = match tokens[0] {
+                    Self::CLASS_NAME => Some(ObjectType::CLASS),
+                    Self::ENUM_NAME => Some(ObjectType::ENUM),
+                    Self::STRUCT_NAME => Some(ObjectType::STRUCT),
+                    _ => None,
+                };
+
+                if let Some(oml_type) = obj_type {
+                    let mut obj = Self {
+                        oml_type,
+                        name: String::from("Nothing"),
+                        variables: vec![],
+                    };
+                    if tokens.len() > 1 {
+                        obj.assign_obj_name(tokens[1])?;
                     }
-                    Self::ENUM_NAME => {
-                        self.oml_type = ObjectType::ENUM;
-                        if tokens.len() > 1 {
-                            self.assign_obj_name(tokens[1])?;
-                        }
-                    }
-                    Self::STRUCT_NAME => {
-                        self.oml_type = ObjectType::STRUCT;
-                        if tokens.len() > 1 {
-                            self.assign_obj_name(tokens[1])?;
-                        }
-                    }
-                    _ => {}
+                    current = Some(obj);
                 }
 
                 if line_ref.contains('{') {
@@ -154,7 +143,16 @@ impl OmlObject {
             }
 
             if line_ref.contains('}') {
-                break;
+                // finish the current object
+                if let Some(mut obj) = current.take() {
+                    if !body_lines.is_empty() {
+                        obj.variables = Self::extract_object_variables(body_lines.drain(..).collect())?;
+                    }
+                    results.push(obj);
+                }
+                body_lines.clear();
+                inside_body = false;
+                continue;
             }
 
             if !line_ref.is_empty() {
@@ -168,11 +166,7 @@ impl OmlObject {
             }
         }
 
-        if !body_lines.is_empty() {
-            self.variables = Self::extract_object_variables(body_lines, &self.oml_type)?;
-        }
-
-        Ok(())
+        Ok(results)
     }
 
     fn assign_obj_name(&mut self, name: &str) -> Result<(), errors::NameError> {
@@ -217,7 +211,7 @@ impl OmlObject {
         ) || Self::is_valid_name(token)
     }
 
-    fn extract_object_variables(lines: Vec<String>, oml_type: &ObjectType) -> Result<Vec<Variable>, Box<dyn std::error::Error>> {
+    fn extract_object_variables(lines: Vec<String>) -> Result<Vec<Variable>, Box<dyn std::error::Error>> {
         let mut vars: Vec<Variable> = Vec::new();
 
         for line in lines {
@@ -227,19 +221,6 @@ impl OmlObject {
             }
 
             let cleaned = trimmed.trim_end_matches(|c| c == ';' || c == '\n').trim();
-
-            if *oml_type == ObjectType::ENUM {
-                if !Self::is_valid_name(cleaned) {
-                    return Err(format!("Invalid enum variant name: '{}'", cleaned).into());
-                }
-                vars.push(Variable {
-                    var_mod: vec![],
-                    visibility: VariableVisibility::PUBLIC,
-                    var_type: String::new(),
-                    name: cleaned.to_string(),
-                });
-                continue;
-            }
 
             match Self::parse_variable_declaration(cleaned) {
                 Ok(var) => vars.push(var),
@@ -369,7 +350,11 @@ mod test {
 
     #[test]
     fn test_assign_name() {
-        let mut oml_obj: OmlObject;
+        let mut oml_obj = OmlObject {
+            oml_type: ObjectType::UNDECIDED,
+            name: String::new(),
+            variables: vec![],
+        };
 
         for valid_name in VALID_NAMES {
             oml_obj.assign_obj_name(valid_name).expect("this should not happen");
@@ -428,10 +413,12 @@ mod test {
             }
         "#;
 
-        let mut oml_obj = OmlObject::new();
-        let result = oml_obj.scan_file(content.to_string());
+        let result = OmlObject::scan_file(content.to_string());
 
         assert!(result.is_ok());
+        let objects = result.unwrap();
+        assert_eq!(objects.len(), 1);
+        let oml_obj = &objects[0];
         assert_eq!(oml_obj.name, "Hello");
         assert!(matches!(oml_obj.oml_type, ObjectType::CLASS));
         assert_eq!(oml_obj.variables.len(), 3);
@@ -453,6 +440,40 @@ mod test {
     }
 
     #[test]
+    fn test_parse_multiple_objects_from_string() {
+        let content = r#"
+            class Hello {
+                string name;
+            }
+
+            enum Color {
+                string Red;
+                string Green;
+                string Blue;
+            }
+
+            struct Point {
+                int32 x;
+                int32 y;
+            }
+        "#;
+
+        let result = OmlObject::scan_file(content.to_string());
+        assert!(result.is_ok());
+        let objects = result.unwrap();
+        assert_eq!(objects.len(), 3);
+
+        assert_eq!(objects[0].name, "Hello");
+        assert!(matches!(objects[0].oml_type, ObjectType::CLASS));
+
+        assert_eq!(objects[1].name, "Color");
+        assert!(matches!(objects[1].oml_type, ObjectType::ENUM));
+
+        assert_eq!(objects[2].name, "Point");
+        assert!(matches!(objects[2].oml_type, ObjectType::STRUCT));
+    }
+
+    #[test]
     fn test_modifier_ordering_rule() {
         let content = r#"
             class Test {
@@ -460,9 +481,7 @@ mod test {
             }
         "#;
 
-        let mut oml_obj = OmlObject::new();
-        let result = oml_obj.scan_file(content.to_string());
-
+        let result = OmlObject::scan_file(content.to_string());
         assert!(result.is_err());
     }
 
@@ -480,13 +499,10 @@ mod test {
             }
         "#;
 
-        let mut oml_obj = OmlObject::new();
-        let result = oml_obj.scan_file(content.to_string());
-
+        let result = OmlObject::scan_file(content.to_string());
         assert!(result.is_err());
 
-        let result = oml_obj.scan_file(content_swaped.to_string());
-
+        let result = OmlObject::scan_file(content_swaped.to_string());
         assert!(result.is_err());
     }
 
@@ -514,23 +530,20 @@ mod test {
                //}
             "#;
 
-
             let vars = vec![
-                Variable::new(vec![VariableModifier::CONST], VariableVisibility::PRIVATE,  String::from("int64"), String::from("x")),
-                Variable::new(vec![VariableModifier::CONST], VariableVisibility::PRIVATE,  String::from("int64"), String::from("y"))
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), name: String::from("x") },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), name: String::from("y") },
             ];
 
-            let mut oml_obj = OmlObject::new();
-            let mut result = oml_obj.scan_file(content.to_string());
-
+            let result = OmlObject::scan_file(content.to_string());
             assert!(result.is_ok());
-            assert_eq!(oml_obj.variables, vars);
+            let objects = result.unwrap();
+            assert_eq!(objects.len(), 1);
+            assert_eq!(objects[0].variables, vars);
 
-            let mut oml_obj2 = OmlObject::new();
-            result = oml_obj2.scan_file(content2.to_string());
-
-            assert!(result.is_ok());
-            assert_eq!(oml_obj2.variables, vec![]);
+            let result2 = OmlObject::scan_file(content2.to_string());
+            assert!(result2.is_ok());
+            assert_eq!(result2.unwrap().len(), 0);
         }
 
         #[test]
@@ -556,22 +569,19 @@ mod test {
             "#;
 
             let vars = vec![
-                Variable::new(vec![VariableModifier::CONST], VariableVisibility::PRIVATE,  String::from("int64"), String::from("x")),
-                Variable::new(vec![VariableModifier::CONST], VariableVisibility::PRIVATE,  String::from("int64"), String::from("y"))
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), name: String::from("x") },
+                Variable { var_mod: vec![VariableModifier::CONST], visibility: VariableVisibility::PRIVATE, var_type: String::from("int64"), name: String::from("y") },
             ];
 
-            let mut oml_obj = OmlObject::new();
-            let mut result = oml_obj.scan_file(content.to_string());
-
+            let result = OmlObject::scan_file(content.to_string());
             assert!(result.is_ok());
-            assert_eq!(oml_obj.variables, vars);
+            let objects = result.unwrap();
+            assert_eq!(objects.len(), 1);
+            assert_eq!(objects[0].variables, vars);
 
-            let mut oml_obj2 = OmlObject::new();
-            result = oml_obj2.scan_file(content2.to_string());
-
-            assert!(result.is_ok());
-            assert_eq!(oml_obj2.variables, vec![]);
-
+            let result2 = OmlObject::scan_file(content2.to_string());
+            assert!(result2.is_ok());
+            assert_eq!(result2.unwrap().len(), 0);
         }
     }
 }

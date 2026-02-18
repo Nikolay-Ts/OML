@@ -4,8 +4,8 @@ use crate::core::oml_object::OmlObject;
 #[test]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = Path::new("src/core/test/oml_files/hello.oml");
-    let obj = OmlObject::get_from_file(path)?;
-    println!("{:?}", obj);
+    let objects = OmlObject::get_from_file(path)?;
+    println!("{:?}", objects);
 
     Ok(())
 }

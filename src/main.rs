@@ -16,20 +16,20 @@ fn main() {
         return;
     }
 
-    let objects = match cli.get_files() {
-        Ok(objects) => objects,
+    let oml_files = match cli.get_files() {
+        Ok(files) => files,
         Err(e) => {
             eprintln!("An error was encountered when parsing the input files: {:?}", e);
             return;
         }
     };
 
-    if objects.is_empty() {
+    if oml_files.is_empty() {
         eprintln!("No .oml files found");
         return;
     }
 
-    let generators= cli.get_generators();
+    let generators = cli.get_generators();
 
     if generators.is_empty() {
         eprintln!("No language flag specified (e.g. --cpp)");
@@ -43,23 +43,25 @@ fn main() {
         return;
     }
 
-    for generator in &generators {
-        for object in &objects {
-            let file_name = &object.file_name;
+    for oml_file in &oml_files {
+        for generator in &generators {
+            for object in &oml_file.objects {
+                let output_name = &object.name;
 
-            match generator.generate(object, file_name) {
-                Ok(content) => {
-                    let output_path = output_dir.join(
-                        format!("{}.{}", file_name, generator.extension())
-                    );
-                    if let Err(e) = fs::write(&output_path, &content) {
-                        eprintln!("Failed to write {}: {}", output_path.display(), e);
-                    } else {
-                        println!("Generated {}", output_path.display());
+                match generator.generate(object, &oml_file.file_name) {
+                    Ok(content) => {
+                        let output_path = output_dir.join(
+                            format!("{}.{}", output_name, generator.extension())
+                        );
+                        if let Err(e) = fs::write(&output_path, &content) {
+                            eprintln!("Failed to write {}: {}", output_path.display(), e);
+                        } else {
+                            println!("Generated {}", output_path.display());
+                        }
                     }
-                }
-                Err(e) => {
-                    eprintln!("Failed to generate {} for {}: {}", generator.extension(), file_name, e);
+                    Err(e) => {
+                        eprintln!("Failed to generate {} for {}: {}", generator.extension(), output_name, e);
+                    }
                 }
             }
         }

@@ -19,8 +19,9 @@ fn generate_and_write(oml_path: &str, file_name: &str) -> String {
     let generator = CppGenerator;
 
     let path = Path::new(oml_path);
-    let oml_object = OmlObject::get_from_file(path)
+    let mut oml_objects = OmlObject::get_from_file(path)
         .expect(&format!("Failed to parse OML file: {}", oml_path));
+    let oml_object = oml_objects.remove(0);
 
     let cpp_output = generator.generate(&oml_object, file_name)
         .expect(&format!("Failed to generate C++ for: {}", file_name));
@@ -135,7 +136,6 @@ fn test_color_enum_generates_cpp_file() {
     ensure_test_results_dir();
 
     let oml_object = OmlObject {
-        file_name: String::new(),
         oml_type: ObjectType::ENUM,
         name: "Color".to_string(),
         variables: vec![
