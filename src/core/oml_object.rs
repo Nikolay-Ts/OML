@@ -77,7 +77,7 @@ impl OmlObject {
 
         for line in lines {
             let trimmed = line.trim();
-            // needed or else the compiler complains. However if the mut is remove, the program crashes.
+            // needed or else the compiler complains. However, if the mut is remove, the program crashes.
             // #[allow(unused_mut)]
             #[allow(unused_assignments)]
             let mut processed_line: String = String::new();

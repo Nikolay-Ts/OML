@@ -18,7 +18,7 @@ impl Generate for PythonGenerator {
     fn generate(&self, oml_object: &OmlObject, file_name: &str) -> Result<String, Box<dyn Error>> {
         let mut py_file = String::from("");
 
-        writeln!(py_file, "// This file has been generated from {}.oml", file_name)?;
+        writeln!(py_file, "# This file has been generated from {}.oml", file_name)?;
         writeln!(py_file)?;
 
         match &oml_object.oml_type {
@@ -43,7 +43,7 @@ fn generate_enum(oml_object: &OmlObject, py_file: &mut String, ) -> Result<(), s
     writeln!(py_file, "class {}(Enum):", oml_object.name)?;
 
     for (index, var) in oml_object.variables.iter().enumerate() {
-        writeln!(py_file, "{} = {}", var.name, index)?;
+        writeln!(py_file, "\t{} = {}", var.name, index)?;
     }
 
     Ok(())
