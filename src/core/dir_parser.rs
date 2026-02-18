@@ -1,17 +1,17 @@
 use std::fs;
 use std::path::Path;
 use crate::core::errors::ParseError;
-use crate::core::oml_object::OmlObject;
+use crate::core::oml_object::{OmlFile, OmlObject};
 
 pub fn parse_path(
     path: &Path,
     max_depth: usize
-) -> Result<Vec<OmlObject>, ParseError> {
+) -> Result<Vec<OmlFile>, ParseError> {
     if max_depth == 0 {
         return Err(ParseError::MaxDepthExceeded);
     }
 
-    let mut result_object = vec![];
+    let mut result = vec![];
 
     let metadata = fs::symlink_metadata(path)?;
 
@@ -28,18 +28,18 @@ pub fn parse_path(
             return Err(ParseError::InvalidPath);
         }
 
-        let file_name = path.file_name()
+        let file_name = path.file_stem()
             .ok_or(ParseError::InvalidPath)?
             .to_string_lossy()
             .to_string();
 
         return match OmlObject::get_from_file(path) {
-            Ok(oml) => {
-                result_object.push(oml);
-                Ok(result_object)
+            Ok(objects) => {
+                result.push(OmlFile { file_name, objects });
+                Ok(result)
             },
             Err(_) => {
-                eprintln!("couldt not obtain the oml object from file {}", file_name);
+                eprintln!("could not obtain oml objects from file {}", path.display());
                 Err(ParseError::InvalidPath)
             }
         }
@@ -71,8 +71,12 @@ pub fn parse_path(
                 continue;
             }
 
+            let file_name = entry_path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+
             match OmlObject::get_from_file(&entry_path) {
-                Ok(oml) => result_object.push(oml),
+                Ok(objects) => result.push(OmlFile { file_name, objects }),
                 Err(e) => {
                     eprintln!("Warning: Failed to parse {}: {}", entry_path.display(), e);
                 }
@@ -81,18 +85,18 @@ pub fn parse_path(
         }
 
         if entry_path.is_dir() {
-            let mut sub_objects = parse_path(&entry_path, max_depth - 1)?;
-            result_object.append(&mut sub_objects);
+            let mut sub_files = parse_path(&entry_path, max_depth - 1)?;
+            result.append(&mut sub_files);
         }
     }
 
-    Ok(result_object)
+    Ok(result)
 }
 
 pub fn parse_dir_from_string(
     path_str: String,
     max_depth: usize
-) -> Result<Vec<OmlObject>, ParseError> {
+) -> Result<Vec<OmlFile>, ParseError> {
     let path = Path::new(&path_str);
 
     if !path.exists() {

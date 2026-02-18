@@ -2,7 +2,7 @@ use clap::{Parser, CommandFactory};
 use crate::core::errors;
 use crate::core::dir_parser::parse_dir_from_string;
 use crate::core::generate::Generate;
-use crate::core::oml_object::OmlObject;
+use crate::core::oml_object::OmlFile;
 
 use crate::generators::{
     cpp::oml_cpp::CppGenerator,
@@ -62,7 +62,7 @@ impl OmlCli {
         println!();
     }
 
-    pub fn get_files(&self) -> Result<Vec<OmlObject>, errors::ParseError> {
+    pub fn get_files(&self) -> Result<Vec<OmlFile>, errors::ParseError> {
         let input_files = match &self.inputs {
             Some(inputs) => inputs,
             None => {
