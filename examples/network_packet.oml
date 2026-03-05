@@ -1,0 +1,22 @@
+// Network packet types using fixed-size byte buffers (static arrays)
+// and dynamic payloads (lists).
+
+struct PacketHeader {
+    public uint8[4]  magic;         // 4-byte magic number
+    public uint16    version;
+    public uint32    sequence;
+    public uint16    payload_len;
+}
+
+struct DataPacket {
+    public PacketHeader header;
+    public list uint8   payload;    // variable-length body
+    public list string  metadata;   // optional key=value annotations
+}
+
+enum PacketType {
+    string HANDSHAKE;
+    string DATA;
+    string ACK;
+    string DISCONNECT;
+}

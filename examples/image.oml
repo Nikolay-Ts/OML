@@ -1,0 +1,20 @@
+// Image / colour data — static arrays for fixed-channel colours,
+// dynamic lists for variable-length pixel rows and palettes.
+
+struct Color {
+    public uint8[4] rgba;   // red, green, blue, alpha
+}
+
+struct Image {
+    public uint32       width;
+    public uint32       height;
+    public list uint8   pixels;         // raw RGBA bytes, width*height*4 long
+    public list string  tags;           // descriptive labels
+    public optional string source_path;
+}
+
+struct Palette {
+    public string       name;
+    public list Color   colors;
+    public const uint8[3] white;        // convenience constant
+}

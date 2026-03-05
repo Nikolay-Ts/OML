@@ -1,0 +1,17 @@
+// Academic records — static arrays for fixed-size grade slots,
+// dynamic lists for enrolled courses and notes.
+
+class Student {
+    public string       name;
+    public uint32       id;
+    public float[5]     grades;         // up to 5 exam scores
+    public list string  courses;        // enrolled course codes
+    public list string  notes;          // free-form instructor notes
+    public optional string advisor;
+}
+
+class Classroom {
+    public string       room_code;
+    public uint16[7]    capacity_by_day; // seats available Mon–Sun
+    public list Student students;
+}

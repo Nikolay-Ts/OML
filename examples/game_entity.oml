@@ -1,0 +1,13 @@
+// A game entity demonstrating static arrays for fixed-size data
+// and dynamic lists for variable-length collections.
+
+class GameEntity {
+    public string name;
+    public float[3] position;       // x, y, z
+    public float[3] velocity;       // dx, dy, dz
+    public float[4] rotation;       // quaternion w, x, y, z
+    public list string tags;        // e.g. "enemy", "flying", "boss"
+    public list string inventory;   // item names the entity carries
+    public int32 health;
+    public bool active;
+}

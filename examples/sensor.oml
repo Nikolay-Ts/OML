@@ -1,0 +1,24 @@
+// IoT sensor schema — static ring-buffer of recent readings,
+// dynamic list for triggered alerts.
+
+struct SensorReading {
+    public uint64  timestamp;
+    public double  value;
+    public string  unit;
+}
+
+class Sensor {
+    public string           id;
+    public string           location;
+    public double[16]       ring_buffer;    // last 16 raw readings
+    public list string      alerts;         // triggered alert messages
+    public mut double       threshold;
+    public bool             active;
+}
+
+enum SensorType {
+    string TEMPERATURE;
+    string HUMIDITY;
+    string PRESSURE;
+    string CO2;
+}
