@@ -5,7 +5,17 @@ use crate::core::generate::{Generate, BackwardsGenerate};
 use std::error::Error;
 use std::fmt::Write;
 
-pub struct JavaGenerator;
+pub struct JavaGenerator {
+    /// When true, classes and structs are emitted as Java records instead of
+    /// plain classes (driven by the `--javaR` CLI flag).
+    pub use_record: bool,
+}
+
+impl JavaGenerator {
+    pub fn new(use_record: bool) -> Self {
+        Self { use_record }
+    }
+}
 
 impl BackwardsGenerate for JavaGenerator {
     fn reverse(&self, content: &str) -> Result<Vec<OmlObject>, Box<dyn Error>> {
@@ -204,7 +214,13 @@ impl Generate for JavaGenerator {
         for (i, oml_object) in oml_objects.iter().enumerate() {
             match &oml_object.oml_type {
                 ObjectType::ENUM => generate_enum(oml_object, &mut java_file)?,
-                ObjectType::CLASS | ObjectType::STRUCT => generate_class(oml_object, &mut java_file)?,
+                ObjectType::CLASS | ObjectType::STRUCT => {
+                    if self.use_record {
+                        generate_record(oml_object, &mut java_file)?;
+                    } else {
+                        generate_class(oml_object, &mut java_file)?;
+                    }
+                }
                 ObjectType::UNDECIDED => return Err("Cannot generate code for UNDECIDED object type".into()),
             }
             if i < oml_objects.len() - 1 {
@@ -337,6 +353,63 @@ fn generate_class(
     }
 
     writeln!(java_file, "}}")?;
+
+    Ok(())
+}
+
+/// Generates a Java record. Instance fields become record components (which are
+/// implicitly final and get auto-generated accessors), while static fields are
+/// emitted in the record body.
+fn generate_record(
+    oml_object: &OmlObject,
+    java_file: &mut String,
+) -> Result<(), std::fmt::Error> {
+    let instance_vars: Vec<&Variable> = oml_object.variables
+        .iter()
+        .filter(|v| !v.var_mod.contains(&VariableModifier::STATIC))
+        .collect();
+
+    let static_vars: Vec<&Variable> = oml_object.variables
+        .iter()
+        .filter(|v| v.var_mod.contains(&VariableModifier::STATIC))
+        .collect();
+
+    // Record components: required params first, then optional, matching the
+    // ordering used for plain classes.
+    let required: Vec<&&Variable> = instance_vars
+        .iter()
+        .filter(|v| !v.var_mod.contains(&VariableModifier::OPTIONAL))
+        .collect();
+    let optional: Vec<&&Variable> = instance_vars
+        .iter()
+        .filter(|v| v.var_mod.contains(&VariableModifier::OPTIONAL))
+        .collect();
+
+    if instance_vars.is_empty() {
+        // A record must declare a (possibly empty) component list.
+        write!(java_file, "public record {}()", oml_object.name)?;
+    } else {
+        writeln!(java_file, "public record {}(", oml_object.name)?;
+        let total = required.len() + optional.len();
+        let mut index = 0;
+        for var in required.iter().chain(optional.iter()) {
+            let java_type = type_annotation(&var.var_type, &var.array_kind, var.var_mod.contains(&VariableModifier::OPTIONAL));
+            write!(java_file, "\t{} {}", java_type, var.name)?;
+            index += 1;
+            if index < total { writeln!(java_file, ",")?; } else { writeln!(java_file)?; }
+        }
+        write!(java_file, ")")?;
+    }
+
+    if static_vars.is_empty() {
+        writeln!(java_file, " {{}}")?;
+    } else {
+        writeln!(java_file, " {{")?;
+        for var in &static_vars {
+            write_field(var, java_file)?;
+        }
+        writeln!(java_file, "}}")?;
+    }
 
     Ok(())
 }
