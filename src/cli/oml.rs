@@ -185,7 +185,7 @@ pub fn get_generators_from_flags(
     if cpp { generators.push(Box::new(CppGenerator)); }
     if python { generators.push(Box::new(PythonGenerator::new(use_data_class))); }
     if kotlin { generators.push(Box::new(KotlinGenerator::new(use_data_class))); }
-    if java { generators.push(Box::new(JavaGenerator)); }
+    if java { generators.push(Box::new(JavaGenerator::new(false))); }
     if rust { generators.push(Box::new(RustGenerator)); }
     if typescript { generators.push(Box::new(TypescriptGenerator)); }
     if sql { generators.push(Box::new(SqlGenerator)); }
@@ -199,7 +199,7 @@ pub fn get_backwards_generator(extension: &str) -> Option<Box<dyn BackwardsGener
         "kt" => Some(Box::new(KotlinGenerator::new(false))),
         "cpp" | "h" => Some(Box::new(CppGenerator)),
         "py" => Some(Box::new(PythonGenerator::new(false))),
-        "java" => Some(Box::new(JavaGenerator)),
+        "java" => Some(Box::new(JavaGenerator::new(false))),
         "ts" => Some(Box::new(TypescriptGenerator)),
         "sql" => Some(Box::new(SqlGenerator)),
         _ => None,
