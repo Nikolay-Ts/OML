@@ -16,7 +16,7 @@ fn ensure_test_results_dir() {
 fn generate_and_write(oml_path: &str, file_name: &str) -> String {
     ensure_test_results_dir();
 
-    let generator = JavaGenerator;
+    let generator = JavaGenerator::new(false);
 
     let path = Path::new(oml_path);
     let oml_objects = OmlObject::get_from_file(path)
@@ -154,7 +154,7 @@ fn test_enum_single_variant_ends_with_semicolon() {
         ],
     };
 
-    let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Single").unwrap();
+    let output = JavaGenerator::new(false).generate(std::slice::from_ref(&oml_object), "Single").unwrap();
     assert!(output.contains("\tONLY;"));
     assert!(!output.contains("ONLY,"));
 }
@@ -169,7 +169,7 @@ fn test_const_field_generates_final_no_setter() {
         ],
     };
 
-    let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Config").unwrap();
+    let output = JavaGenerator::new(false).generate(std::slice::from_ref(&oml_object), "Config").unwrap();
     assert!(output.contains("private final String version;"));
     // No setter for final fields
     assert!(!output.contains("setVersion("));
@@ -188,7 +188,7 @@ fn test_static_field_not_in_constructor() {
         ],
     };
 
-    let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Counter").unwrap();
+    let output = JavaGenerator::new(false).generate(std::slice::from_ref(&oml_object), "Counter").unwrap();
     assert!(output.contains("private static int count;"));
     assert!(!output.contains("this.count"));
 }
@@ -204,7 +204,7 @@ fn test_optional_params_come_after_required_in_constructor() {
         ],
     };
 
-    let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Mixed").unwrap();
+    let output = JavaGenerator::new(false).generate(std::slice::from_ref(&oml_object), "Mixed").unwrap();
     // Search within the constructor block to avoid matching the field declarations above it
     let constructor_start = output.find("public Mixed(").unwrap();
     let constructor_region = &output[constructor_start..];
@@ -223,7 +223,7 @@ fn test_dynamic_list_generates_list_type_and_import() {
         ],
     };
 
-    let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Container").unwrap();
+    let output = JavaGenerator::new(false).generate(std::slice::from_ref(&oml_object), "Container").unwrap();
     assert!(output.contains("import java.util.List;"));
     assert!(output.contains("public List<String> tags;"));
 }
@@ -238,7 +238,7 @@ fn test_static_array_expands_with_size_comment() {
         ],
     };
 
-    let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "Matrix").unwrap();
+    let output = JavaGenerator::new(false).generate(std::slice::from_ref(&oml_object), "Matrix").unwrap();
     assert!(output.contains("public float[] /* [4] */ data;"));
 }
 
@@ -260,7 +260,7 @@ fn test_all_builtin_types_convert_to_java() {
     }).collect();
 
     let oml_object = OmlObject { oml_type: ObjectType::CLASS, name: "AllTypes".to_string(), variables };
-    let output = JavaGenerator.generate(std::slice::from_ref(&oml_object), "AllTypes").unwrap();
+    let output = JavaGenerator::new(false).generate(std::slice::from_ref(&oml_object), "AllTypes").unwrap();
 
     for (i, (_, expected)) in pairs.iter().enumerate() {
         let expected_field = format!("{} field_{};", expected, i);
@@ -271,10 +271,95 @@ fn test_all_builtin_types_convert_to_java() {
 #[test]
 fn test_undecided_object_type_returns_error() {
     let oml_object = OmlObject { oml_type: ObjectType::UNDECIDED, name: "Bad".to_string(), variables: vec![] };
-    assert!(JavaGenerator.generate(std::slice::from_ref(&oml_object), "Bad").is_err());
+    assert!(JavaGenerator::new(false).generate(std::slice::from_ref(&oml_object), "Bad").is_err());
 }
 
 #[test]
 fn test_extension_is_java() {
-    assert_eq!(JavaGenerator.extension(), "java");
+    assert_eq!(JavaGenerator::new(false).extension(), "java");
+}
+
+// ========== RECORD GENERATION TESTS ==========
+
+#[test]
+fn test_record_basic() {
+    let oml_object = OmlObject {
+        oml_type: ObjectType::CLASS,
+        name: "Person".to_string(),
+        variables: vec![
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "age".to_string() },
+        ],
+    };
+
+    let output = JavaGenerator::new(true).generate(std::slice::from_ref(&oml_object), "Person").unwrap();
+    assert!(output.contains("public record Person("));
+    assert!(output.contains("String name"));
+    assert!(output.contains("int age"));
+    // Records are immutable: no setters or getters are emitted.
+    assert!(!output.contains("setName("));
+    assert!(!output.contains("getName("));
+}
+
+#[test]
+fn test_record_struct_also_generates_record() {
+    let oml_object = OmlObject {
+        oml_type: ObjectType::STRUCT,
+        name: "Point".to_string(),
+        variables: vec![
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "double".to_string(), array_kind: ArrayKind::None, name: "x".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PUBLIC, var_type: "double".to_string(), array_kind: ArrayKind::None, name: "y".to_string() },
+        ],
+    };
+
+    let output = JavaGenerator::new(true).generate(std::slice::from_ref(&oml_object), "Point").unwrap();
+    assert!(output.contains("public record Point("));
+}
+
+#[test]
+fn test_record_required_before_optional() {
+    let oml_object = OmlObject {
+        oml_type: ObjectType::CLASS,
+        name: "Mixed".to_string(),
+        variables: vec![
+            Variable { var_mod: vec![VariableModifier::OPTIONAL], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "opt_first".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "required".to_string() },
+        ],
+    };
+
+    let output = JavaGenerator::new(true).generate(std::slice::from_ref(&oml_object), "Mixed").unwrap();
+    let req_pos = output.find("int required").unwrap();
+    let opt_pos = output.find("String opt_first").unwrap();
+    assert!(req_pos < opt_pos, "required components must precede optional ones");
+}
+
+#[test]
+fn test_record_static_field_in_body() {
+    let oml_object = OmlObject {
+        oml_type: ObjectType::CLASS,
+        name: "Counter".to_string(),
+        variables: vec![
+            Variable { var_mod: vec![VariableModifier::STATIC], visibility: VariableVisibility::PRIVATE, var_type: "int32".to_string(), array_kind: ArrayKind::None, name: "count".to_string() },
+            Variable { var_mod: vec![], visibility: VariableVisibility::PRIVATE, var_type: "string".to_string(), array_kind: ArrayKind::None, name: "name".to_string() },
+        ],
+    };
+
+    let output = JavaGenerator::new(true).generate(std::slice::from_ref(&oml_object), "Counter").unwrap();
+    assert!(output.contains("public record Counter("));
+    // Static field stays out of the component list and lives in the body.
+    assert!(output.contains("private static int count;"));
+    assert!(!output.contains("int count,"));
+    assert!(!output.contains("int count\n"));
+}
+
+#[test]
+fn test_record_empty() {
+    let oml_object = OmlObject {
+        oml_type: ObjectType::CLASS,
+        name: "Empty".to_string(),
+        variables: vec![],
+    };
+
+    let output = JavaGenerator::new(true).generate(std::slice::from_ref(&oml_object), "Empty").unwrap();
+    assert!(output.contains("public record Empty() {}"));
 }

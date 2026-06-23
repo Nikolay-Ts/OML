@@ -43,8 +43,12 @@ pub struct OmlCli {
     #[arg(long)]
     python: bool,
 
-    #[arg(long)]
+    #[arg(long, conflicts_with = "java_record")]
     java: bool,
+
+    // generate Java records instead of plain classes
+    #[arg(long = "javaR")]
+    java_record: bool,
 
     #[arg(long)]
     kotlin: bool,
@@ -103,7 +107,10 @@ impl OmlCli {
 
 
         if self.java {
-            generators.push(Box::new(JavaGenerator));
+            generators.push(Box::new(JavaGenerator::new(false)));
+        }
+        if self.java_record {
+            generators.push(Box::new(JavaGenerator::new(true)));
         }
         if self.rust {
             generators.push(Box::new(RustGenerator));
